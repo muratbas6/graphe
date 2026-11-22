@@ -100,7 +100,7 @@ public final class BookMetadataService: @unchecked Sendable {
         options: [.caseInsensitive]
     )
     private static let copyrightYearRegex = try! NSRegularExpression(
-        pattern: #"(?:©|copyright|\(c\)|published(?:\s+in)?|first\s+published|bask[ıi])\D{0,24}\b(1[5-9]\d{2}|20[0-2]\d)\b"#,
+        pattern: #"(?:©|copyright|\(c\)|published(?:\s+in)?|first\s+published|(?:second|third|fourth|fifth|revised|updated|new|\d+(?:st|nd|rd|th))\s+edition|bask[ıi])\D{0,32}\b(1[5-9]\d{2}|20[0-2]\d)(?:\s*[,/-]\s*(1[5-9]\d{2}|20[0-2]\d))?\b"#,
         options: [.caseInsensitive]
     )
     private static let publisherRegex = try! NSRegularExpression(
@@ -193,9 +193,8 @@ public final class BookMetadataService: @unchecked Sendable {
                 }
             }
 
-            if year == nil, let yStr = firstMatch(Self.copyrightYearRegex, in: frontMatter, group: 1),
-               let yVal = Int(yStr) {
-                year = yVal
+            if year == nil {
+                year = extractBestEditionYear(from: frontMatter)
             }
 
             if publisher.isEmpty, let pub = firstMatch(Self.publisherRegex, in: frontMatter, group: 1) {
@@ -329,15 +328,23 @@ public final class BookMetadataService: @unchecked Sendable {
         var components = URLComponents(string: "https://www.googleapis.com/books/v1/volumes")
         components?.queryItems = [
             URLQueryItem(name: "q", value: query),
-            URLQueryItem(name: "maxResults", value: "1"),
+            URLQueryItem(name: "maxResults", value: "5"),
             URLQueryItem(name: "printType", value: "books")
         ]
         guard let url = components?.url else { return nil }
         let json = try await fetchJSON(from: url)
-        guard let items = json["items"] as? [[String: Any]],
-              let volumeInfo = items.first?["volumeInfo"] as? [String: Any] else {
+        guard let items = json["items"] as? [[String: Any]], !items.isEmpty else {
             return nil
         }
+
+        let editionHint = extractEditionHint(from: base.title)
+        let bestVolumeInfo: [String: Any]? = items
+            .compactMap { $0["volumeInfo"] as? [String: Any] }
+            .max { a, b in
+                scoreGoogleBooksCandidate(a, against: base, editionHint: editionHint)
+                    < scoreGoogleBooksCandidate(b, against: base, editionHint: editionHint)
+            }
+        guard let volumeInfo = bestVolumeInfo else { return nil }
 
         var updated = base
         if let t = volumeInfo["title"] as? String, !t.isEmpty {
@@ -356,7 +363,12 @@ public final class BookMetadataService: @unchecked Sendable {
         if let pubDate = volumeInfo["publishedDate"] as? String,
            let match = firstMatch(Self.yearRegex, in: pubDate, group: 1),
            let y = Int(match) {
-            updated.year = y
+            // Avoid overwriting a newer edition year already confirmed on the PDF copyright page with a 1st-edition year
+            if let existingYear = base.year, editionHint != nil, y < existingYear {
+                updated.year = existingYear
+            } else {
+                updated.year = y
+            }
         }
         if updated.isbn.isEmpty,
            let identifiers = volumeInfo["industryIdentifiers"] as? [[String: Any]] {
@@ -367,6 +379,62 @@ public final class BookMetadataService: @unchecked Sendable {
             }
         }
         return updated
+    }
+
+    private func extractBestEditionYear(from frontMatter: String) -> Int? {
+        let range = NSRange(frontMatter.startIndex..., in: frontMatter)
+        let matches = Self.copyrightYearRegex.matches(in: frontMatter, range: range)
+        let currentYear = Calendar.current.component(.year, from: Date())
+        var years: [Int] = []
+        for match in matches {
+            for group in 1..<match.numberOfRanges {
+                let r = match.range(at: group)
+                guard r.location != NSNotFound, let swiftRange = Range(r, in: frontMatter),
+                      let y = Int(frontMatter[swiftRange]),
+                      y >= 1500 && y <= currentYear + 1 else {
+                    continue
+                }
+                years.append(y)
+            }
+        }
+        // Copyright pages list "First published 2000; Second edition 2017" — prefer the latest edition year.
+        return years.max()
+    }
+
+    private func extractEditionHint(from title: String) -> String? {
+        let lower = title.lowercased()
+        let hints = ["second edition", "2nd edition", "third edition", "3rd edition", "fourth edition", "4th edition", "revised edition", "expanded edition"]
+        return hints.first(where: { lower.contains($0) })
+    }
+
+    private func scoreGoogleBooksCandidate(_ info: [String: Any], against base: BookMetadataDraft, editionHint: String?) -> Int {
+        var score = 0
+        let combinedTitle = [info["title"] as? String, info["subtitle"] as? String]
+            .compactMap { $0 }
+            .joined(separator: " ")
+            .lowercased()
+        if let hint = editionHint {
+            let normalizedHint = hint.replacingOccurrences(of: "second", with: "2nd")
+            if combinedTitle.contains(hint) || combinedTitle.contains(normalizedHint) {
+                score += 40
+            }
+        }
+        if let pubDate = info["publishedDate"] as? String,
+           let match = firstMatch(Self.yearRegex, in: pubDate, group: 1),
+           let y = Int(match) {
+            if let baseYear = base.year, y == baseYear {
+                score += 30
+            } else if editionHint != nil {
+                score += min(20, max(0, (y - 1990) / 2))
+            }
+        }
+        if let pub = info["publisher"] as? String, !pub.isEmpty {
+            score += 5
+        }
+        if let ids = info["industryIdentifiers"] as? [[String: Any]], !ids.isEmpty {
+            score += 5
+        }
+        return score
     }
 
     private func searchCrossRef(query: String, mergingInto base: BookMetadataDraft) async throws -> BookMetadataDraft? {
@@ -485,7 +553,7 @@ public final class BookMetadataService: @unchecked Sendable {
         components?.queryItems = [
             URLQueryItem(name: "q", value: query),
             URLQueryItem(name: "limit", value: "1"),
-            URLQueryItem(name: "fields", value: "title,author_name,first_publish_year,publisher,isbn")
+            URLQueryItem(name: "fields", value: "title,author_name,first_publish_year,publish_year,publisher,isbn")
         ]
         guard let url = components?.url else {
             return nil
@@ -500,8 +568,11 @@ public final class BookMetadataService: @unchecked Sendable {
         if let authors = first["author_name"] as? [String], !authors.isEmpty {
             updated.author = authors.prefix(3).joined(separator: "; ")
         }
-        if let y = first["first_publish_year"] as? Int {
-            updated.year = y
+        let editionHint = extractEditionHint(from: base.title)
+        if editionHint != nil, let pubYears = first["publish_year"] as? [Int], let latest = pubYears.max() {
+            updated.year = base.year ?? latest
+        } else if let y = first["first_publish_year"] as? Int {
+            updated.year = base.year ?? y
         }
         if let pubs = first["publisher"] as? [String], let firstPub = pubs.first, !firstPub.isEmpty {
             updated.publisher = firstPub
