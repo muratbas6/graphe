@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 public struct LibrarySidebarView: View {
     @Bindable public var state: WorkspaceState
@@ -20,6 +21,7 @@ public struct LibrarySidebarView: View {
     @State private var pendingDeleteNotebook: StandaloneNotebook? = nil
 
     @State private var expandedFolderPaths: Set<String> = []
+    @State private var selectedFolderURL: URL? = nil
 
     public init(
         state: WorkspaceState,
@@ -461,20 +463,51 @@ public struct LibrarySidebarView: View {
                                 Image(systemName: "arrow.clockwise")
                                     .font(.caption2)
                                     .foregroundStyle(state.theme.secondaryInk)
+                                    .frame(width: 20, height: 20)
+                                    .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
                             .help("Klasörleri Yenile")
                         }
 
-                        Button {
-                            presentAttachVaultFolderPanel()
+                        Menu {
+                            if let targetNode = resolvedActiveFolderNode() {
+                                Button {
+                                    presentImportPDFsPanel(into: targetNode)
+                                } label: {
+                                    Label("‘\(targetNode.name)’ İçine PDF Ekle...", systemImage: "doc.badge.plus")
+                                }
+
+                                Button {
+                                    newSubfolderName = ""
+                                    newSubfolderParent = targetNode
+                                } label: {
+                                    Label("‘\(targetNode.name)’ İçine Yeni Alt Klasör...", systemImage: "folder.badge.plus")
+                                }
+
+                                Divider()
+                            }
+
+                            Button {
+                                presentAttachVaultFolderPanel()
+                            } label: {
+                                Label("Mevcut Klasör Bağla...", systemImage: "folder.badge.gearshape")
+                            }
                         } label: {
-                            Image(systemName: "folder.badge.plus")
-                                .font(.caption)
-                                .foregroundStyle(state.theme.secondaryInk)
+                            Label("Ekle", systemImage: "plus")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(state.theme.primaryInk)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 3.5)
+                                .background(state.theme.cardBackground, in: RoundedRectangle(cornerRadius: 6))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .stroke(state.theme.subtleBorder, lineWidth: 1)
+                                )
                         }
-                        .buttonStyle(.plain)
-                        .help("Kitap Klasörü (Vault) Bağla")
+                        .menuStyle(.borderlessButton)
+                        .fixedSize()
+                        .help("PDF Ekle, Yeni Alt Klasör Oluştur veya Klasör Bağla")
                     } else {
                         Button {
                             onRequestOpenPDF()
@@ -536,6 +569,10 @@ public struct LibrarySidebarView: View {
                                 depth: 0,
                                 state: state,
                                 expandedPaths: $expandedFolderPaths,
+                                selectedFolderURL: $selectedFolderURL,
+                                onRequestImportPDFs: { target in
+                                    presentImportPDFsPanel(into: target)
+                                },
                                 onRequestNewSubfolder: { parent in
                                     newSubfolderName = ""
                                     newSubfolderParent = parent
@@ -893,17 +930,60 @@ public struct LibrarySidebarView: View {
         panel.message = "Seçilen klasör ve alt klasörleri canlı dosya yöneticisi olarak sol panele eklenecek."
         if panel.runModal() == .OK, let folder = panel.url {
             state.addWatchedFolder(url: folder)
+            selectedFolderURL = folder.standardizedFileURL
+            expandedFolderPaths.insert(folder.standardizedFileURL.path)
+        }
+    }
+
+    private func resolvedActiveFolderNode() -> FileTreeNode? {
+        if let selected = selectedFolderURL {
+            for root in state.folderTrees {
+                if let found = findFolderNode(in: root, matchingPath: selected.standardizedFileURL.path) {
+                    return found
+                }
+            }
+        }
+        return state.folderTrees.first
+    }
+
+    private func findFolderNode(in node: FileTreeNode, matchingPath path: String) -> FileTreeNode? {
+        if node.isDirectory && node.url.standardizedFileURL.path == path {
+            return node
+        }
+        for child in node.children where child.isDirectory {
+            if let found = findFolderNode(in: child, matchingPath: path) {
+                return found
+            }
+        }
+        return nil
+    }
+
+    private func presentImportPDFsPanel(into targetFolder: FileTreeNode) {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.pdf]
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = true
+        panel.title = "‘\(targetFolder.name)’ Klasörüne PDF Ekle"
+        panel.message = "Seçilen PDF dosyaları ‘\(targetFolder.name)’ klasörüne taşınacak ve kütüphaneye eklenecek."
+        panel.prompt = "Klasöre Ekle"
+        if panel.runModal() == .OK, !panel.urls.isEmpty {
+            expandedFolderPaths.insert(targetFolder.id)
+            selectedFolderURL = targetFolder.url
+            _ = state.importPDFs(from: panel.urls, into: targetFolder.url, openFirst: panel.urls.count == 1)
         }
     }
 }
 
-// MARK: - Recursive Interactive File Tree Row (Drag & Drop + Context Menu)
+// MARK: - Recursive Interactive File Tree Row (Drag & Drop + Hover Actions + Context Menu)
 
 private struct FileTreeNodeRow: View {
     let node: FileTreeNode
     let depth: Int
     @Bindable var state: WorkspaceState
     @Binding var expandedPaths: Set<String>
+    @Binding var selectedFolderURL: URL?
+    let onRequestImportPDFs: (FileTreeNode) -> Void
     let onRequestNewSubfolder: (FileTreeNode) -> Void
     let onRequestRename: (FileTreeNode) -> Void
 
@@ -912,6 +992,10 @@ private struct FileTreeNodeRow: View {
 
     private var isExpanded: Bool {
         expandedPaths.contains(node.id)
+    }
+
+    private var isSelectedFolder: Bool {
+        node.isDirectory && selectedFolderURL?.standardizedFileURL.path == node.url.standardizedFileURL.path
     }
 
     private var isActiveDocument: Bool {
@@ -929,6 +1013,8 @@ private struct FileTreeNodeRow: View {
                             depth: depth + 1,
                             state: state,
                             expandedPaths: $expandedPaths,
+                            selectedFolderURL: $selectedFolderURL,
+                            onRequestImportPDFs: onRequestImportPDFs,
                             onRequestNewSubfolder: onRequestNewSubfolder,
                             onRequestRename: onRequestRename
                         )
@@ -949,16 +1035,77 @@ private struct FileTreeNodeRow: View {
 
             Image(systemName: node.isRootFolder ? "books.vertical.fill" : (isExpanded ? "folder.fill" : "folder"))
                 .font(.caption)
-                .foregroundStyle(node.isRootFolder ? state.theme.accentColor : state.theme.secondaryInk)
+                .foregroundStyle((node.isRootFolder || isSelectedFolder) ? state.theme.accentColor : state.theme.secondaryInk)
 
             Text(node.name)
-                .font(.caption.weight(node.isRootFolder ? .semibold : .medium))
+                .font(.caption.weight((node.isRootFolder || isSelectedFolder) ? .semibold : .medium))
                 .foregroundStyle(state.theme.primaryInk)
                 .lineLimit(1)
 
             Spacer(minLength: 4)
 
-            if node.pdfCount > 0 {
+            if isHovered {
+                HStack(spacing: 3) {
+                    Menu {
+                        Button {
+                            onRequestImportPDFs(node)
+                        } label: {
+                            Label("PDF Ekle...", systemImage: "doc.badge.plus")
+                        }
+                        Button {
+                            onRequestNewSubfolder(node)
+                        } label: {
+                            Label("Yeni Alt Klasör...", systemImage: "folder.badge.plus")
+                        }
+                    } label: {
+                        Image(systemName: "plus")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(state.theme.primaryInk)
+                            .frame(width: 18, height: 18)
+                            .background(state.theme.cardBackground.opacity(0.9), in: RoundedRectangle(cornerRadius: 4))
+                    }
+                    .menuStyle(.borderlessButton)
+                    .fixedSize()
+                    .help("Bu Klasöre PDF veya Alt Klasör Ekle")
+
+                    Button {
+                        onRequestRename(node)
+                    } label: {
+                        Image(systemName: "pencil")
+                            .font(.system(size: 9.5, weight: .medium))
+                            .foregroundStyle(state.theme.secondaryInk)
+                            .frame(width: 18, height: 18)
+                            .background(state.theme.cardBackground.opacity(0.9), in: RoundedRectangle(cornerRadius: 4))
+                    }
+                    .buttonStyle(.plain)
+                    .help("Yeniden Adlandır")
+
+                    Menu {
+                        Button("Finder'da Göster") {
+                            state.revealInFinder(at: node.url)
+                        }
+                        Divider()
+                        if node.isRootFolder {
+                            Button("Klasör Bağlantısını Kaldır", role: .destructive) {
+                                state.removeWatchedFolder(path: node.url.path)
+                            }
+                        } else {
+                            Button("Çöp Kutusuna Taşı", role: .destructive) {
+                                state.trashFileItem(at: node.url)
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis")
+                            .font(.system(size: 9.5, weight: .semibold))
+                            .foregroundStyle(state.theme.secondaryInk)
+                            .frame(width: 18, height: 18)
+                            .background(state.theme.cardBackground.opacity(0.9), in: RoundedRectangle(cornerRadius: 4))
+                    }
+                    .menuStyle(.borderlessButton)
+                    .fixedSize()
+                    .help("Klasör Seçenekleri")
+                }
+            } else if node.pdfCount > 0 {
                 Text("\(node.pdfCount)")
                     .font(.system(size: 10).monospacedDigit())
                     .foregroundStyle(state.theme.secondaryInk)
@@ -969,11 +1116,20 @@ private struct FileTreeNodeRow: View {
         .padding(.vertical, 5)
         .background(
             RoundedRectangle(cornerRadius: 7)
-                .fill(isDropTargeted ? state.theme.accentSoftBackground : (isHovered ? state.theme.hoverFill : Color.clear))
+                .fill(
+                    isDropTargeted
+                        ? state.theme.accentSoftBackground
+                        : (isHovered ? state.theme.hoverFill : (isSelectedFolder ? state.theme.cardBackground.opacity(0.6) : Color.clear))
+                )
         )
         .overlay(
             RoundedRectangle(cornerRadius: 7)
-                .stroke(isDropTargeted ? state.theme.accentColor.opacity(0.6) : Color.clear, lineWidth: 1)
+                .stroke(
+                    isDropTargeted
+                        ? state.theme.accentColor.opacity(0.6)
+                        : (isSelectedFolder ? state.theme.subtleBorder : Color.clear),
+                    lineWidth: 1
+                )
         )
         .contentShape(Rectangle())
         .onHover { hovering in
@@ -982,6 +1138,7 @@ private struct FileTreeNodeRow: View {
             }
         }
         .onTapGesture {
+            selectedFolderURL = node.url
             withAnimation(.easeInOut(duration: 0.14)) {
                 if isExpanded {
                     expandedPaths.remove(node.id)
@@ -992,19 +1149,29 @@ private struct FileTreeNodeRow: View {
         }
         .draggable(node.url)
         .dropDestination(for: URL.self) { items, _ in
-            var moved = false
-            for droppedURL in items {
-                state.moveFileItem(at: droppedURL, toFolder: node.url)
-                moved = true
+            let pdfs = items.filter { $0.pathExtension.lowercased() == "pdf" }
+            let others = items.filter { $0.pathExtension.lowercased() != "pdf" }
+            var handled = false
+            if !pdfs.isEmpty {
+                let count = state.importPDFs(from: pdfs, into: node.url, openFirst: false)
+                handled = handled || (count > 0)
             }
-            if moved {
+            for otherURL in others {
+                state.moveFileItem(at: otherURL, toFolder: node.url)
+                handled = true
+            }
+            if handled {
                 expandedPaths.insert(node.id)
+                selectedFolderURL = node.url
             }
-            return moved
+            return handled
         } isTargeted: { targeted in
             isDropTargeted = targeted
         }
         .contextMenu {
+            Button("Bu Klasöre PDF Ekle...") {
+                onRequestImportPDFs(node)
+            }
             Button("Yeni Alt Klasör...") {
                 onRequestNewSubfolder(node)
             }
@@ -1040,6 +1207,40 @@ private struct FileTreeNodeRow: View {
                 .lineLimit(1)
 
             Spacer(minLength: 4)
+
+            if isHovered {
+                Menu {
+                    Button("Yan Yana (Sağ Panelde) Aç") {
+                        state.openInSecondarySplit(url: node.url)
+                    }
+                    Divider()
+                    Button("Metadata & Adlandırma...") {
+                        state.openMetadataEditor(forURL: node.url)
+                    }
+                    Button("Klasöre Taşı...") {
+                        state.presentMoveToFolder(url: node.url)
+                    }
+                    Button("Yeniden Adlandır...") {
+                        onRequestRename(node)
+                    }
+                    Button("Finder'da Göster") {
+                        state.revealInFinder(at: node.url)
+                    }
+                    Divider()
+                    Button("Çöp Kutusuna Taşı", role: .destructive) {
+                        state.trashFileItem(at: node.url)
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 9.5, weight: .semibold))
+                        .foregroundStyle(state.theme.secondaryInk)
+                        .frame(width: 18, height: 18)
+                        .background(state.theme.cardBackground.opacity(0.9), in: RoundedRectangle(cornerRadius: 4))
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .help("Kitap İşlemleri")
+            }
         }
         .padding(.leading, CGFloat(depth) * 14 + 16)
         .padding(.trailing, 8)

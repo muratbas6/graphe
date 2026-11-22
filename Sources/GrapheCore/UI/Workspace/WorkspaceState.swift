@@ -1634,6 +1634,88 @@ public final class WorkspaceState {
         }
     }
 
+    /// Moves (or falls back to copying if source cannot be moved across volumes/permissions) one or more PDF files
+    /// into the target folder, updates open tabs & library paths, and triggers automatic background metadata enrichment.
+    @discardableResult
+    public func importPDFs(from sourceURLs: [URL], into targetFolderURL: URL, openFirst: Bool = false) -> Int {
+        let stdTarget = targetFolderURL.standardizedFileURL
+        let pdfURLs = sourceURLs
+            .map(\.standardizedFileURL)
+            .filter { $0.pathExtension.lowercased() == "pdf" }
+        guard !pdfURLs.isEmpty else { return 0 }
+
+        var importedURLs: [URL] = []
+        let fm = FileManager.default
+
+        for src in pdfURLs {
+            let finalURL: URL
+            if src.deletingLastPathComponent().standardizedFileURL.path == stdTarget.path {
+                finalURL = src
+            } else {
+                do {
+                    finalURL = try folderExplorer.moveItem(at: src, toFolder: stdTarget)
+                    libraryDatabase.updateDocumentPaths(oldPrefix: src.path, newPrefix: finalURL.path)
+                    migrateOpenStateForPathChange(
+                        oldPrefix: src.path,
+                        newPrefix: finalURL.path,
+                        renamedSingleFileTitle: nil
+                    )
+                } catch {
+                    // Fallback to copy if source cannot be moved (e.g. read-only volume)
+                    let candidate = stdTarget.appendingPathComponent(src.lastPathComponent)
+                    guard !fm.fileExists(atPath: candidate.path) else {
+                        errorMessage = FolderExplorerError.destinationExists.localizedDescription
+                        continue
+                    }
+                    do {
+                        try fm.copyItem(at: src, to: candidate)
+                        finalURL = candidate.standardizedFileURL
+                    } catch {
+                        errorMessage = error.localizedDescription
+                        continue
+                    }
+                }
+            }
+
+            importedURLs.append(finalURL)
+
+            // Register in library & trigger background metadata enrichment even if not opened immediately
+            let hash = LibraryDatabase.computeFileHash(for: finalURL)
+            let stem = finalURL.deletingPathExtension().lastPathComponent
+            let record = libraryDatabase.upsertDocument(
+                hash: hash,
+                path: finalURL.path,
+                title: stem,
+                author: nil,
+                pageCount: 0,
+                touchLastOpened: false
+            )
+            scheduleAutomaticMetadataEnrichmentIfNeeded(for: record, url: finalURL)
+        }
+
+        refreshLibrary()
+        refreshStandaloneNotebooks()
+        refreshFolderTrees()
+
+        if openFirst, let first = importedURLs.first {
+            openDocument(at: first, inNewTab: false)
+        }
+
+        if !importedURLs.isEmpty {
+            let folderName = stdTarget.lastPathComponent
+            let msg = importedURLs.count == 1
+                ? "‘\(importedURLs[0].lastPathComponent)’ → ‘\(folderName)’ klasörüne eklendi."
+                : "\(importedURLs.count) PDF → ‘\(folderName)’ klasörüne eklendi."
+            NotificationCenter.default.post(
+                name: .grapheShowToast,
+                object: nil,
+                userInfo: ["message": msg]
+            )
+        }
+
+        return importedURLs.count
+    }
+
     public func trashFileItem(at url: URL) {
         let stdPath = url.standardizedFileURL.path
         let prefixWithSlash = stdPath + "/"
