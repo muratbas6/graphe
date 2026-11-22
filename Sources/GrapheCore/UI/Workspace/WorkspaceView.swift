@@ -36,7 +36,7 @@ public struct WorkspaceView: View {
             }
         }
         .frame(minWidth: 820, minHeight: 620)
-        .background(state.theme.chromeBackground)
+        .background(state.theme.windowBackground)
         .preferredColorScheme(state.theme.preferredColorScheme)
         .toolbarBackground(state.theme.chromeBackground, for: .windowToolbar)
         .toolbarBackgroundVisibility(.visible, for: .windowToolbar)
@@ -190,7 +190,7 @@ public struct WorkspaceView: View {
                     state.toggleSnapshotMode()
                 } label: {
                     Label("Bölge Kırp", systemImage: "camera.viewfinder")
-                        .foregroundStyle(state.isSnapshotMode ? Color.accentColor : .primary)
+                        .foregroundStyle(state.isSnapshotMode ? state.theme.accentColor : state.theme.primaryInk)
                 }
                 .disabled(state.activeTab == nil)
                 .help(state.isSnapshotMode ? "Bölge Kırpmayı İptal Et (⇧⌘X)" : "PDF'ten Bölge Kırp ve Deftere Gönder (⇧⌘X)")
@@ -257,19 +257,19 @@ public struct WorkspaceView: View {
             if let toastMessage {
                 HStack(spacing: 8) {
                     Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(Color.accentColor)
+                        .foregroundStyle(state.theme.accentColor)
                     Text(toastMessage)
                         .font(.caption.weight(.medium))
                         .foregroundStyle(state.theme.primaryInk)
                 }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 8)
-                .background(state.theme.surfaceBackground, in: Capsule())
+                .padding(.horizontal, 15)
+                .padding(.vertical, 9)
+                .background(state.theme.cardBackground, in: Capsule())
                 .overlay(
                     Capsule()
                         .stroke(state.theme.subtleBorder, lineWidth: 1)
                 )
-                .shadow(color: Color.black.opacity(0.14), radius: 8, y: 3)
+                .shadow(color: state.theme.cardShadowColor, radius: 12, y: 4)
                 .padding(.bottom, 18)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
@@ -458,7 +458,7 @@ public struct WorkspaceView: View {
                 emptyWorkspaceView
             }
         }
-        .background(state.theme.chromeBackground)
+        .background(state.theme.windowBackground)
         .onChange(of: state.isSearchVisible) { _, visible in
             if visible {
                 isSearchFieldFocused = true
@@ -468,56 +468,83 @@ public struct WorkspaceView: View {
 
     private var searchBar: some View {
         HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass")
-                .foregroundStyle(state.theme.secondaryInk)
-                .font(.caption)
+            HStack(spacing: 7) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(state.theme.secondaryInk)
+                    .font(.caption)
 
-            TextField("Belgede ara...", text: Binding(
-                get: { state.searchQuery },
-                set: { state.scheduleSearch($0) }
-            ))
-            .textFieldStyle(.plain)
-            .font(.callout)
-            .foregroundStyle(state.theme.primaryInk)
-            .focused($isSearchFieldFocused)
-            .onSubmit {
-                state.nextSearchMatch()
-            }
-            .onExitCommand {
-                state.closeSearch()
-            }
+                TextField("Belgede ara...", text: Binding(
+                    get: { state.searchQuery },
+                    set: { state.scheduleSearch($0) }
+                ))
+                .textFieldStyle(.plain)
+                .font(.callout)
+                .foregroundStyle(state.theme.primaryInk)
+                .focused($isSearchFieldFocused)
+                .onSubmit {
+                    state.nextSearchMatch()
+                }
+                .onExitCommand {
+                    state.closeSearch()
+                }
 
-            if !state.searchQuery.isEmpty {
-                if state.searchMatches.isEmpty {
-                    Text("Sonuç yok")
-                        .font(.caption)
-                        .foregroundStyle(state.theme.secondaryInk)
-                } else {
-                    Text("\(state.currentMatchIndex + 1) / \(state.searchMatches.count)")
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(state.theme.secondaryInk)
+                if !state.searchQuery.isEmpty {
+                    if state.searchMatches.isEmpty {
+                        Text("Sonuç yok")
+                            .font(.caption2)
+                            .foregroundStyle(state.theme.secondaryInk)
+                    } else {
+                        Text("\(state.currentMatchIndex + 1) / \(state.searchMatches.count)")
+                            .font(.caption2.monospacedDigit().weight(.medium))
+                            .foregroundStyle(state.theme.accentColor)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(state.theme.accentSoftBackground, in: Capsule())
+                    }
                 }
             }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(state.theme.cardBackground, in: RoundedRectangle(cornerRadius: 8))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(state.theme.subtleBorder, lineWidth: 1)
+            )
 
-            Button {
-                state.previousSearchMatch()
-            } label: {
-                Image(systemName: "chevron.up")
-                    .foregroundStyle(state.theme.primaryInk)
-            }
-            .buttonStyle(.borderless)
-            .disabled(state.searchMatches.isEmpty)
-            .help("Önceki Eşleşme (⇧⌘G)")
+            HStack(spacing: 4) {
+                Button {
+                    state.previousSearchMatch()
+                } label: {
+                    Image(systemName: "chevron.up")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(state.searchMatches.isEmpty ? state.theme.secondaryInk.opacity(0.45) : state.theme.primaryInk)
+                        .frame(width: 24, height: 22)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .disabled(state.searchMatches.isEmpty)
+                .help("Önceki Eşleşme (⇧⌘G)")
 
-            Button {
-                state.nextSearchMatch()
-            } label: {
-                Image(systemName: "chevron.down")
-                    .foregroundStyle(state.theme.primaryInk)
+                Button {
+                    state.nextSearchMatch()
+                } label: {
+                    Image(systemName: "chevron.down")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(state.searchMatches.isEmpty ? state.theme.secondaryInk.opacity(0.45) : state.theme.primaryInk)
+                        .frame(width: 24, height: 22)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .disabled(state.searchMatches.isEmpty)
+                .help("Sonraki Eşleşme (⌘G)")
             }
-            .buttonStyle(.borderless)
-            .disabled(state.searchMatches.isEmpty)
-            .help("Sonraki Eşleşme (⌘G)")
+            .padding(.horizontal, 3)
+            .padding(.vertical, 2)
+            .background(state.theme.cardBackground.opacity(0.75), in: RoundedRectangle(cornerRadius: 7))
+            .overlay(
+                RoundedRectangle(cornerRadius: 7)
+                    .stroke(state.theme.subtleBorder, lineWidth: 1)
+            )
 
             Button {
                 state.closeSearch()
@@ -529,54 +556,25 @@ public struct WorkspaceView: View {
             .help("Aramayı Kapat (Esc)")
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 6)
+        .padding(.vertical, 7)
         .background(state.theme.chromeBackground)
     }
 
     private var tabBar: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 5) {
+            HStack(spacing: 6) {
                 ForEach(state.tabs) { tab in
                     let isSelected = (state.activeStandaloneNotebookID == nil && tab.id == state.activeTab?.id)
-                    HStack(spacing: 6) {
-                        if tab.isSplit {
-                            Image(systemName: "rectangle.split.2x1")
-                                .font(.caption2)
-                                .foregroundStyle(state.theme.secondaryInk)
-                        }
-                        Text(tab.displayTitle)
-                            .font(.caption.weight(isSelected ? .semibold : .regular))
-                            .foregroundStyle(isSelected ? state.theme.primaryInk : state.theme.secondaryInk)
-                            .lineLimit(1)
-                            .frame(maxWidth: 220, alignment: .leading)
-
-                        Button {
-                            state.closeTab(id: tab.id)
-                        } label: {
-                            Image(systemName: "xmark")
-                                .font(.system(size: 9, weight: .bold))
-                                .foregroundStyle(state.theme.secondaryInk)
-                                .padding(4)
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .help("Sekmeyi Kapat")
-                    }
-                    .padding(.leading, 10)
-                    .padding(.trailing, 6)
-                    .padding(.vertical, 4)
-                    .background(
-                        RoundedRectangle(cornerRadius: 6)
-                            .fill(isSelected ? state.theme.surfaceBackground : state.theme.subtleBorder.opacity(0.45))
+                    WorkspaceTabPill(
+                        title: tab.displayTitle,
+                        isSelected: isSelected,
+                        theme: state.theme,
+                        leadingIcon: tab.isSplit ? "rectangle.split.2x1" : nil,
+                        leadingDotColor: nil,
+                        closeHelp: "Sekmeyi Kapat",
+                        onSelect: { state.selectTab(id: tab.id) },
+                        onClose: { state.closeTab(id: tab.id) }
                     )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 6)
-                            .stroke(isSelected ? state.theme.subtleBorder : Color.clear, lineWidth: 1)
-                    )
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        state.selectTab(id: tab.id)
-                    }
                     .contextMenu {
                         Button("Sekmeyi Kapat") {
                             state.closeTab(id: tab.id)
@@ -594,43 +592,16 @@ public struct WorkspaceView: View {
 
                 ForEach(state.openStandaloneNotebooks) { nb in
                     let isSelected = (state.activeStandaloneNotebookID == nb.id)
-                    HStack(spacing: 6) {
-                        Circle()
-                            .fill(nb.color.swiftUIColor)
-                            .frame(width: 7, height: 7)
-                        Text(nb.title)
-                            .font(.caption.weight(isSelected ? .semibold : .regular))
-                            .foregroundStyle(isSelected ? state.theme.primaryInk : state.theme.secondaryInk)
-                            .lineLimit(1)
-                            .frame(maxWidth: 200, alignment: .leading)
-
-                        Button {
-                            state.closeStandaloneNotebookTab(id: nb.id)
-                        } label: {
-                            Image(systemName: "xmark")
-                                .font(.system(size: 9, weight: .bold))
-                                .foregroundStyle(state.theme.secondaryInk)
-                                .padding(4)
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .help("Defter Sekmesini Kapat")
-                    }
-                    .padding(.leading, 10)
-                    .padding(.trailing, 6)
-                    .padding(.vertical, 4)
-                    .background(
-                        RoundedRectangle(cornerRadius: 6)
-                            .fill(isSelected ? state.theme.surfaceBackground : state.theme.subtleBorder.opacity(0.45))
+                    WorkspaceTabPill(
+                        title: nb.title,
+                        isSelected: isSelected,
+                        theme: state.theme,
+                        leadingIcon: nil,
+                        leadingDotColor: nb.color.swiftUIColor,
+                        closeHelp: "Defter Sekmesini Kapat",
+                        onSelect: { state.openStandaloneNotebook(id: nb.id) },
+                        onClose: { state.closeStandaloneNotebookTab(id: nb.id) }
                     )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 6)
-                            .stroke(isSelected ? state.theme.subtleBorder : Color.clear, lineWidth: 1)
-                    )
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        state.openStandaloneNotebook(id: nb.id)
-                    }
                     .contextMenu {
                         Button("Sekmeyi Kapat") {
                             state.closeStandaloneNotebookTab(id: nb.id)
@@ -638,8 +609,8 @@ public struct WorkspaceView: View {
                     }
                 }
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 5)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
         }
         .background(state.theme.chromeBackground)
     }
@@ -742,22 +713,39 @@ public struct WorkspaceView: View {
     }
 
     private var emptyWorkspaceView: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "doc.richtext")
-                .font(.system(size: 52))
-                .foregroundStyle(state.theme.secondaryInk)
-            Text("Graphe")
-                .font(.largeTitle.weight(.semibold))
-                .foregroundStyle(state.theme.primaryInk)
-            Text("Okumaya başlamak için bir PDF dosyası açın, sürükleyip bırakın veya bağımsız bir defter oluşturun.")
-                .font(.callout)
-                .foregroundStyle(state.theme.secondaryInk)
-            HStack(spacing: 10) {
+        VStack(spacing: 18) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 18)
+                    .fill(state.theme.cardBackground)
+                    .frame(width: 72, height: 72)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 18)
+                            .stroke(state.theme.subtleBorder, lineWidth: 1)
+                    )
+                    .shadow(color: state.theme.cardShadowColor, radius: state.theme.cardShadowRadius, y: state.theme.cardShadowY)
+
+                Image(systemName: "book.closed.fill")
+                    .font(.system(size: 30, weight: .medium))
+                    .foregroundStyle(state.theme.accentColor)
+            }
+
+            VStack(spacing: 6) {
+                Text("Graphe")
+                    .font(.system(size: 30, weight: .semibold, design: .serif))
+                    .foregroundStyle(state.theme.primaryInk)
+                Text("Okumaya başlamak için bir PDF dosyası açın, sürükleyip bırakın veya bağımsız bir defter oluşturun.")
+                    .font(.callout)
+                    .foregroundStyle(state.theme.secondaryInk)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 420)
+            }
+
+            HStack(spacing: 12) {
                 Button {
                     presentOpenPanel(forSecondary: false)
                 } label: {
                     Label("PDF Dosyası Aç", systemImage: "folder")
-                        .padding(.horizontal, 8)
+                        .padding(.horizontal, 10)
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
@@ -767,14 +755,15 @@ public struct WorkspaceView: View {
                     state.leftPanelTab = .notebooks
                 } label: {
                     Label("Yeni Defter", systemImage: "book.pages")
-                        .padding(.horizontal, 8)
+                        .padding(.horizontal, 10)
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.large)
             }
+            .padding(.top, 4)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(state.theme.chromeBackground)
+        .background(state.theme.windowBackground)
     }
 
     public func presentOpenPanel(forSecondary: Bool) {
@@ -832,5 +821,83 @@ public struct WorkspaceView: View {
             }
         }
         return handled
+    }
+}
+
+private struct WorkspaceTabPill: View {
+    let title: String
+    let isSelected: Bool
+    let theme: ReadingTheme
+    let leadingIcon: String?
+    let leadingDotColor: Color?
+    let closeHelp: String
+    let onSelect: () -> Void
+    let onClose: () -> Void
+
+    @State private var isHovered: Bool = false
+    @State private var isCloseHovered: Bool = false
+
+    var body: some View {
+        HStack(spacing: 7) {
+            if let dotColor = leadingDotColor {
+                Circle()
+                    .fill(dotColor)
+                    .frame(width: 7, height: 7)
+            } else if let icon = leadingIcon {
+                Image(systemName: icon)
+                    .font(.caption2)
+                    .foregroundStyle(isSelected ? theme.accentColor : theme.secondaryInk)
+            }
+
+            Text(title)
+                .font(.system(size: 11.5, weight: isSelected ? .semibold : .medium))
+                .foregroundStyle(isSelected ? theme.primaryInk : (isHovered ? theme.primaryInk.opacity(0.88) : theme.secondaryInk))
+                .lineLimit(1)
+                .frame(maxWidth: 210, alignment: .leading)
+
+            Button {
+                onClose()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 8.5, weight: .bold))
+                    .foregroundStyle(isCloseHovered ? theme.primaryInk : theme.secondaryInk.opacity(isSelected || isHovered ? 0.85 : 0.45))
+                    .frame(width: 16, height: 16)
+                    .background(
+                        Circle()
+                            .fill(isCloseHovered ? theme.hoverFill : Color.clear)
+                    )
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .onHover { hovering in
+                isCloseHovered = hovering
+            }
+            .help(closeHelp)
+        }
+        .padding(.leading, 11)
+        .padding(.trailing, 6)
+        .padding(.vertical, 5)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(isSelected ? theme.cardBackground : (isHovered ? theme.hoverFill : Color.clear))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(isSelected ? theme.subtleBorder : Color.clear, lineWidth: 1)
+        )
+        .shadow(
+            color: isSelected ? theme.cardShadowColor : .clear,
+            radius: isSelected ? 4 : 0,
+            y: isSelected ? 1 : 0
+        )
+        .contentShape(Rectangle())
+        .onTapGesture {
+            onSelect()
+        }
+        .onHover { hovering in
+            withAnimation(.easeOut(duration: 0.14)) {
+                isHovered = hovering
+            }
+        }
     }
 }

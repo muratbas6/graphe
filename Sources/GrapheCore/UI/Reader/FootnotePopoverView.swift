@@ -52,28 +52,31 @@ public struct FootnotePopoverView: View {
         .frame(width: 480)
         .frame(minHeight: 180, maxHeight: 400)
         .background(theme.chromeBackground)
+        .preferredColorScheme(theme.preferredColorScheme)
     }
 
     private var header: some View {
         HStack(spacing: 8) {
-            Label {
+            HStack(spacing: 5) {
+                Image(systemName: "text.bubble.fill")
+                    .font(.caption2)
+                    .foregroundStyle(theme.accentColor)
                 Text("\(preview.origin.badgeTitle) #\(preview.marker)")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(theme.primaryInk)
-            } icon: {
-                Image(systemName: "text.bubble.fill")
-                    .font(.caption)
-                    .foregroundStyle(Color.accentColor)
+                    .foregroundStyle(theme.accentColor)
             }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(theme.accentSoftBackground, in: Capsule())
 
-            Text("· s. \(preview.targetPageIndex + 1)")
-                .font(.caption.monospacedDigit())
+            Text("Sayfa \(preview.targetPageIndex + 1)")
+                .font(.caption.monospacedDigit().weight(.medium))
                 .foregroundStyle(theme.secondaryInk)
 
             Spacer()
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 9)
         .background(theme.chromeBackground)
     }
 
@@ -83,18 +86,19 @@ public struct FootnotePopoverView: View {
             ScrollView([.vertical, .horizontal]) {
                 themedSnapshotImage(snapshot)
                     .frame(maxWidth: .infinity)
-                    .padding(6)
+                    .padding(8)
             }
             .background(theme.surfaceBackground)
             .frame(minHeight: 140, maxHeight: 310)
         } else if !preview.extractedText.isEmpty {
             ScrollView {
                 Text(preview.extractedText)
-                    .font(.system(size: 13))
+                    .font(.system(size: 13.5, design: .serif))
+                    .lineSpacing(4)
                     .foregroundStyle(theme.primaryInk)
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(12)
+                    .padding(14)
             }
             .background(theme.surfaceBackground)
             .frame(minHeight: 120, maxHeight: 310)

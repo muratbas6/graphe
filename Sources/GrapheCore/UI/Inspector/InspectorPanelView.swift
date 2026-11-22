@@ -17,30 +17,50 @@ public struct InspectorPanelView: View {
 
     public var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 18) {
+            // Warm Editorial Segmented Control (Sözlük / Notlar / Dipnotlar)
+            HStack(spacing: 3) {
                 ForEach(RightPanelTab.allCases) { tab in
                     let isSelected = state.rightPanelTab == tab
                     Button {
-                        withAnimation(.easeInOut(duration: 0.14)) {
+                        withAnimation(.easeInOut(duration: 0.16)) {
                             state.rightPanelTab = tab
                         }
                     } label: {
-                        VStack(spacing: 5) {
-                            Text(tab.rawValue)
-                                .font(.caption.weight(isSelected ? .semibold : .regular))
-                                .foregroundStyle(isSelected ? state.theme.primaryInk : state.theme.secondaryInk)
-                            Rectangle()
-                                .fill(isSelected ? Color.accentColor : Color.clear)
-                                .frame(height: 1.5)
-                        }
+                        Text(tab.rawValue)
+                            .font(.system(size: 11, weight: isSelected ? .semibold : .medium))
+                            .foregroundStyle(isSelected ? state.theme.primaryInk : state.theme.secondaryInk)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.85)
+                            .padding(.horizontal, 3)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 5.5)
+                            .background(
+                                RoundedRectangle(cornerRadius: 7)
+                                    .fill(isSelected ? state.theme.cardBackground : Color.clear)
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 7)
+                                    .stroke(isSelected ? state.theme.subtleBorder : Color.clear, lineWidth: 0.8)
+                            )
+                            .shadow(
+                                color: isSelected ? state.theme.cardShadowColor : .clear,
+                                radius: isSelected ? 3 : 0,
+                                y: isSelected ? 1 : 0
+                            )
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                 }
-                Spacer()
             }
-            .padding(.horizontal, 14)
-            .padding(.top, 10)
-            .padding(.bottom, 2)
+            .padding(3)
+            .background(state.theme.windowBackground, in: RoundedRectangle(cornerRadius: 9))
+            .overlay(
+                RoundedRectangle(cornerRadius: 9)
+                    .stroke(state.theme.subtleBorder, lineWidth: 1)
+            )
+            .padding(.horizontal, 12)
+            .padding(.top, 11)
+            .padding(.bottom, 9)
 
             Rectangle()
                 .fill(state.theme.subtleBorder)
@@ -107,14 +127,14 @@ public struct InspectorPanelView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 // Manual lookup bar + Dictionary Manager trigger
-                HStack(spacing: 6) {
-                    HStack(spacing: 6) {
+                HStack(spacing: 7) {
+                    HStack(spacing: 7) {
                         Image(systemName: "magnifyingglass")
                             .font(.caption)
                             .foregroundStyle(state.theme.secondaryInk)
-                        TextField("Kelime veya ifade ara...", text: $manualQuery)
+                        TextField("Kelime veya ifade ara…", text: $manualQuery)
                             .textFieldStyle(.plain)
-                            .font(.callout)
+                            .font(.system(size: 12))
                             .foregroundStyle(state.theme.primaryInk)
                             .onSubmit {
                                 let trimmed = manualQuery.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -133,11 +153,11 @@ public struct InspectorPanelView: View {
                             .buttonStyle(.plain)
                         }
                     }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 6)
-                    .background(state.theme.surfaceBackground.opacity(0.8), in: RoundedRectangle(cornerRadius: 7))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 7)
+                    .background(state.theme.cardBackground, in: RoundedRectangle(cornerRadius: 9))
                     .overlay(
-                        RoundedRectangle(cornerRadius: 7)
+                        RoundedRectangle(cornerRadius: 9)
                             .stroke(state.theme.subtleBorder, lineWidth: 1)
                     )
 
@@ -146,19 +166,26 @@ public struct InspectorPanelView: View {
                     } label: {
                         Image(systemName: "books.vertical")
                             .font(.callout)
+                            .foregroundStyle(state.theme.primaryInk)
+                            .frame(width: 30, height: 30)
+                            .background(state.theme.cardBackground, in: RoundedRectangle(cornerRadius: 9))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 9)
+                                    .stroke(state.theme.subtleBorder, lineWidth: 1)
+                            )
                     }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
+                    .buttonStyle(.plain)
                     .help("Akademik Sözlük Yöneticisi (StarDict)")
                 }
 
                 if state.selectedText.isEmpty {
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 9) {
                         Label("Akademik Sözlük & Çeviri", systemImage: "character.book.closed")
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(state.theme.primaryInk)
                         Text("• PDF'te bir kelimeye **Option (⌥) + Tık** yaparak anında sözlüğe bakabilirsiniz.\n• Sağ üstteki kitap simgesinden **StarDict (.ifo/.idx/.dict)** akademik sözlüklerinizi ekleyebilirsiniz.")
-                            .font(.caption)
+                            .font(.system(size: 12))
+                            .lineSpacing(3)
                             .foregroundStyle(state.theme.secondaryInk)
 
                         if state.dictionaryManager.installedDictionaries.isEmpty {
@@ -173,13 +200,14 @@ public struct InspectorPanelView: View {
                             .padding(.top, 2)
                         }
                     }
-                    .padding(10)
+                    .padding(13)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(state.theme.surfaceBackground.opacity(0.65), in: RoundedRectangle(cornerRadius: 8))
+                    .background(state.theme.cardBackground, in: RoundedRectangle(cornerRadius: 10))
                     .overlay(
-                        RoundedRectangle(cornerRadius: 8)
+                        RoundedRectangle(cornerRadius: 10)
                             .stroke(state.theme.subtleBorder, lineWidth: 1)
                     )
+                    .shadow(color: state.theme.cardShadowColor, radius: state.theme.cardShadowRadius, y: state.theme.cardShadowY)
                 } else {
                     selectedTextSection
                     dictionaryCardsSection
@@ -192,25 +220,27 @@ public struct InspectorPanelView: View {
                     .frame(height: 1)
                 vocabularySection
             }
-            .padding(12)
+            .padding(14)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(state.theme.windowBackground)
     }
 
     private var selectedTextSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 7) {
             HStack {
-                Text("Seçili Metin")
-                    .font(.caption.weight(.semibold))
+                Text("SEÇİLİ METİN")
+                    .font(.system(size: 10, weight: .semibold))
+                    .tracking(0.6)
                     .foregroundStyle(state.theme.secondaryInk)
 
                 if let langName = state.multiDictionaryResult?.detectedLanguageName {
                     Text(langName)
-                        .font(.caption2.weight(.medium))
-                        .padding(.horizontal, 6)
+                        .font(.caption2.weight(.semibold))
+                        .padding(.horizontal, 7)
                         .padding(.vertical, 2)
-                        .background(Color.accentColor.opacity(0.15), in: Capsule())
-                        .foregroundStyle(Color.accentColor)
+                        .background(state.theme.accentSoftBackground, in: Capsule())
+                        .foregroundStyle(state.theme.accentColor)
                 }
 
                 Spacer()
@@ -219,7 +249,7 @@ public struct InspectorPanelView: View {
                     state.saveCurrentLookupToVocabulary()
                 } label: {
                     Label("Kaydet", systemImage: "bookmark.fill")
-                        .font(.caption2)
+                        .font(.caption2.weight(.medium))
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.mini)
@@ -227,46 +257,55 @@ public struct InspectorPanelView: View {
             }
 
             Text(state.selectedText)
-                .font(.callout)
+                .font(.system(size: 13.5, weight: .medium, design: .serif))
+                .lineSpacing(3)
                 .foregroundStyle(state.theme.primaryInk)
                 .textSelection(.enabled)
-                .padding(9)
+                .padding(11)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+                .background(state.theme.cardBackground, in: RoundedRectangle(cornerRadius: 10))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(state.theme.subtleBorder, lineWidth: 1)
+                )
+                .shadow(color: state.theme.cardShadowColor, radius: 4, y: 1.5)
         }
     }
 
     private var dictionaryCardsSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 9) {
             HStack {
-                Label("Sözlük Kaynakları", systemImage: "books.vertical")
-                    .font(.caption.weight(.semibold))
+                Label("SÖZLÜK KAYNAKLARI", systemImage: "books.vertical")
+                    .font(.system(size: 10, weight: .semibold))
+                    .tracking(0.5)
                     .foregroundStyle(state.theme.secondaryInk)
                 Spacer()
                 Button {
                     showDictionaryManager = true
                 } label: {
                     Text("Yönet (\(state.dictionaryManager.installedDictionaries.filter(\.isEnabled).count))")
-                        .font(.caption2)
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(state.theme.accentColor)
                 }
                 .buttonStyle(.borderless)
             }
 
             if let cards = state.multiDictionaryResult?.cards, !cards.isEmpty {
-                VStack(spacing: 8) {
+                VStack(spacing: 10) {
                     ForEach(cards) { card in
                         DictionaryResultCardView(card: card, theme: state.theme)
                     }
                 }
             } else {
                 Text("Etkin sözlüklerde bu madde bulunamadı. Yeni StarDict akademik sözlükleri eklemek için 'Yönet' düğmesini kullanabilirsiniz.")
-                    .font(.caption)
+                    .font(.system(size: 12))
+                    .lineSpacing(3)
                     .foregroundStyle(state.theme.secondaryInk)
-                    .padding(8)
+                    .padding(12)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(state.theme.surfaceBackground.opacity(0.65), in: RoundedRectangle(cornerRadius: 8))
+                    .background(state.theme.cardBackground, in: RoundedRectangle(cornerRadius: 10))
                     .overlay(
-                        RoundedRectangle(cornerRadius: 8)
+                        RoundedRectangle(cornerRadius: 10)
                             .stroke(state.theme.subtleBorder, lineWidth: 1)
                     )
             }
@@ -276,12 +315,13 @@ public struct InspectorPanelView: View {
     @ViewBuilder
     private var nearbySuggestionsSection: some View {
         if let suggestions = state.multiDictionaryResult?.nearbySuggestions, !suggestions.isEmpty {
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Yakın Maddeler")
-                    .font(.caption.weight(.semibold))
+            VStack(alignment: .leading, spacing: 7) {
+                Text("YAKIN MADDELER")
+                    .font(.system(size: 10, weight: .semibold))
+                    .tracking(0.6)
                     .foregroundStyle(state.theme.secondaryInk)
 
-                FlowLayoutChips(items: suggestions) { word in
+                FlowLayoutChips(items: suggestions, theme: state.theme) { word in
                     state.lookupManualTerm(word)
                 }
             }
@@ -318,18 +358,30 @@ public struct InspectorPanelView: View {
                 .padding(8)
             } else if !state.translatedText.isEmpty {
                 Text(state.translatedText)
-                    .font(.callout)
+                    .font(.system(size: 12.5))
+                    .lineSpacing(3)
+                    .foregroundStyle(state.theme.primaryInk)
                     .textSelection(.enabled)
-                    .padding(9)
+                    .padding(11)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.green.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+                    .background(state.theme.cardBackground, in: RoundedRectangle(cornerRadius: 10))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(Color.green.opacity(0.28), lineWidth: 1)
+                    )
+                    .shadow(color: state.theme.cardShadowColor, radius: 4, y: 1.5)
             } else if let error = state.translationError {
                 Text(error)
                     .font(.caption)
+                    .lineSpacing(2.5)
                     .foregroundStyle(state.theme.secondaryInk)
-                    .padding(8)
+                    .padding(10)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+                    .background(state.theme.cardBackground, in: RoundedRectangle(cornerRadius: 10))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(Color.orange.opacity(0.32), lineWidth: 1)
+                    )
             } else {
                 Text("Aynı dil seçili veya çeviri hazır değil.")
                     .font(.caption)
@@ -378,6 +430,7 @@ public struct InspectorPanelView: View {
                             HStack {
                                 Text(item.term)
                                     .font(.caption.weight(.semibold))
+                                    .foregroundStyle(state.theme.primaryInk)
                                     .lineLimit(1)
                                 Spacer()
                                 Button {
@@ -410,13 +463,14 @@ public struct InspectorPanelView: View {
                                     .lineLimit(1)
                             }
                         }
-                        .padding(8)
+                        .padding(11)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(state.theme.surfaceBackground.opacity(0.65), in: RoundedRectangle(cornerRadius: 6))
+                        .background(state.theme.cardBackground, in: RoundedRectangle(cornerRadius: 10))
                         .overlay(
-                            RoundedRectangle(cornerRadius: 6)
+                            RoundedRectangle(cornerRadius: 10)
                                 .stroke(state.theme.subtleBorder, lineWidth: 1)
                         )
+                        .shadow(color: state.theme.cardShadowColor, radius: 4, y: 1.5)
                         .contentShape(Rectangle())
                         .onTapGesture {
                             state.lookupManualTerm(item.term)
@@ -487,16 +541,16 @@ public struct InspectorPanelView: View {
                                     .stroke(state.theme.subtleBorder, lineWidth: 1)
                             )
                     } else {
-                        VStack(spacing: 8) {
+                        VStack(spacing: 10) {
                             ForEach(state.currentPageFootnotes) { item in
-                                VStack(alignment: .leading, spacing: 6) {
+                                VStack(alignment: .leading, spacing: 7) {
                                     HStack {
                                         Text("#\(item.marker)")
                                             .font(.caption2.weight(.bold).monospacedDigit())
-                                            .padding(.horizontal, 6)
-                                            .padding(.vertical, 2)
-                                            .background(Color.accentColor.opacity(0.15), in: Capsule())
-                                            .foregroundStyle(Color.accentColor)
+                                            .padding(.horizontal, 7)
+                                            .padding(.vertical, 2.5)
+                                            .background(state.theme.accentSoftBackground, in: Capsule())
+                                            .foregroundStyle(state.theme.accentColor)
 
                                         Spacer()
 
@@ -504,24 +558,27 @@ public struct InspectorPanelView: View {
                                             state.pinPageFootnote(item)
                                         } label: {
                                             Label("Sabitle", systemImage: "pin")
-                                                .font(.caption2)
+                                                .font(.caption2.weight(.medium))
+                                                .foregroundStyle(state.theme.accentColor)
                                         }
                                         .buttonStyle(.borderless)
                                     }
 
                                     Text(item.text)
-                                        .font(.caption)
+                                        .font(.system(size: 12.5))
+                                        .lineSpacing(3.5)
                                         .foregroundStyle(state.theme.primaryInk)
                                         .textSelection(.enabled)
                                         .fixedSize(horizontal: false, vertical: true)
                                 }
-                                .padding(9)
+                                .padding(12)
                                 .frame(maxWidth: .infinity, alignment: .leading)
-                                .background(state.theme.surfaceBackground.opacity(0.75), in: RoundedRectangle(cornerRadius: 8))
+                                .background(state.theme.cardBackground, in: RoundedRectangle(cornerRadius: 10))
                                 .overlay(
-                                    RoundedRectangle(cornerRadius: 8)
+                                    RoundedRectangle(cornerRadius: 10)
                                         .stroke(state.theme.subtleBorder, lineWidth: 1)
                                 )
+                                .shadow(color: state.theme.cardShadowColor, radius: state.theme.cardShadowRadius, y: state.theme.cardShadowY)
                             }
                         }
                     }
@@ -569,9 +626,10 @@ public struct InspectorPanelView: View {
                     }
                 }
             }
-            .padding(12)
+            .padding(14)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(state.theme.windowBackground)
     }
 }
 
@@ -604,10 +662,10 @@ private struct PinnedFootnoteCardView: View {
             HStack(spacing: 6) {
                 Text("#\(preview.marker)")
                     .font(.caption2.weight(.bold).monospacedDigit())
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(Color.accentColor.opacity(0.15), in: Capsule())
-                    .foregroundStyle(Color.accentColor)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 2.5)
+                    .background(theme.accentSoftBackground, in: Capsule())
+                    .foregroundStyle(theme.accentColor)
 
                 Text("s. \(preview.targetPageIndex + 1)")
                     .font(.caption2.monospacedDigit())
@@ -639,7 +697,8 @@ private struct PinnedFootnoteCardView: View {
 
             if displayMode == .text && !preview.extractedText.isEmpty {
                 Text(preview.extractedText)
-                    .font(.caption)
+                    .font(.system(size: 12.5))
+                    .lineSpacing(3.5)
                     .foregroundStyle(theme.primaryInk)
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
@@ -648,8 +707,8 @@ private struct PinnedFootnoteCardView: View {
                     .resizable()
                     .scaledToFit()
                     .frame(maxWidth: .infinity)
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
-                    .background(theme.surfaceBackground, in: RoundedRectangle(cornerRadius: 6))
+                    .clipShape(RoundedRectangle(cornerRadius: 7))
+                    .background(theme.surfaceBackground, in: RoundedRectangle(cornerRadius: 7))
             }
 
             HStack(spacing: 8) {
@@ -672,13 +731,14 @@ private struct PinnedFootnoteCardView: View {
                 .controlSize(.mini)
             }
         }
-        .padding(9)
+        .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(theme.surfaceBackground.opacity(0.75), in: RoundedRectangle(cornerRadius: 8))
+        .background(theme.cardBackground, in: RoundedRectangle(cornerRadius: 10))
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: 10)
                 .stroke(theme.subtleBorder, lineWidth: 1)
         )
+        .shadow(color: theme.cardShadowColor, radius: theme.cardShadowRadius, y: theme.cardShadowY)
     }
 }
 
@@ -689,42 +749,53 @@ private struct DictionaryResultCardView: View {
 
     var body: some View {
         DisclosureGroup(isExpanded: $isExpanded) {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 6) {
+                Rectangle()
+                    .fill(theme.subtleBorder)
+                    .frame(height: 1)
+                    .padding(.top, 5)
+                    .padding(.bottom, 2)
+
                 Text(card.attributedText)
-                    .font(.caption)
+                    .font(.system(size: 12.5))
+                    .lineSpacing(3.5)
                     .foregroundStyle(theme.primaryInk)
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, 4)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         } label: {
-            HStack(spacing: 6) {
+            HStack(spacing: 7) {
                 Image(systemName: card.isSystemDictionary ? "apple.logo" : "book.closed.fill")
                     .font(.caption2)
-                    .foregroundStyle(card.isSystemDictionary ? theme.secondaryInk : Color.accentColor)
+                    .foregroundStyle(card.isSystemDictionary ? theme.secondaryInk : theme.accentColor)
                 Text(card.sourceName)
-                    .font(.caption.weight(.semibold))
+                    .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(theme.primaryInk)
                     .lineLimit(1)
                 Spacer()
                 Text(card.matchedHeadword)
-                    .font(.caption2.monospaced())
-                    .foregroundStyle(theme.secondaryInk)
+                    .font(.system(size: 10.5, weight: .medium, design: .monospaced))
+                    .foregroundStyle(theme.accentColor)
+                    .padding(.horizontal, 6.5)
+                    .padding(.vertical, 2)
+                    .background(theme.accentSoftBackground, in: RoundedRectangle(cornerRadius: 5))
                     .lineLimit(1)
             }
         }
-        .padding(9)
-        .background(theme.surfaceBackground.opacity(0.75), in: RoundedRectangle(cornerRadius: 8))
+        .padding(12)
+        .background(theme.cardBackground, in: RoundedRectangle(cornerRadius: 10))
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: 10)
                 .stroke(theme.subtleBorder, lineWidth: 1)
         )
+        .shadow(color: theme.cardShadowColor, radius: theme.cardShadowRadius, y: theme.cardShadowY)
     }
 }
 
 private struct FlowLayoutChips: View {
     let items: [String]
+    let theme: ReadingTheme
     let onTap: (String) -> Void
 
     var body: some View {
@@ -734,12 +805,17 @@ private struct FlowLayoutChips: View {
                     onTap(word)
                 } label: {
                     Text(word)
-                        .font(.caption2)
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(theme.primaryInk)
                         .lineLimit(1)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 5)
                         .frame(maxWidth: .infinity)
-                        .background(Color.accentColor.opacity(0.1), in: Capsule())
+                        .background(theme.cardBackground, in: Capsule())
+                        .overlay(
+                            Capsule()
+                                .stroke(theme.subtleBorder, lineWidth: 1)
+                        )
                 }
                 .buttonStyle(.plain)
             }

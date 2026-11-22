@@ -227,8 +227,9 @@ public struct OneNoteWorkspaceView: View {
     }
 
     private var compactHeaderBar: some View {
-        HStack(spacing: 6) {
-            if state.notesSubTab == .notebook {
+        let showingNotebookControls = isFullCanvasMode || state.notesSubTab == .notebook
+        return HStack(spacing: 6) {
+            if showingNotebookControls {
                 // Colored Section Switcher Menu
                 Menu {
                     ForEach(state.notebookSections) { sec in
@@ -278,17 +279,22 @@ public struct OneNoteWorkspaceView: View {
                         }
                     }
                 } label: {
-                    HStack(spacing: 5) {
+                    HStack(spacing: 6) {
                         Circle()
                             .fill((activeSection?.color ?? .purple).swiftUIColor)
                             .frame(width: 7, height: 7)
                         Text(activeSection?.title ?? "Genel Notlar")
-                            .font(.caption.weight(.semibold))
+                            .font(.system(size: 11.5, weight: .semibold))
+                            .foregroundStyle(state.theme.primaryInk)
                             .lineLimit(1)
                     }
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 4)
-                    .background((activeSection?.color ?? .purple).swiftUIColor.opacity(0.15), in: RoundedRectangle(cornerRadius: 6))
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 4.5)
+                    .background(state.theme.cardBackground, in: RoundedRectangle(cornerRadius: 7))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 7)
+                            .stroke(state.theme.subtleBorder, lineWidth: 1)
+                    )
                 }
                 .menuStyle(.borderlessButton)
                 .fixedSize()
@@ -352,7 +358,7 @@ public struct OneNoteWorkspaceView: View {
 
             Spacer(minLength: 4)
 
-            if state.notesSubTab == .notebook {
+            if showingNotebookControls {
                 // Default Notebook Font Picker with live font previews
                 Button {
                     showDefaultFontPopover.toggle()
@@ -370,9 +376,14 @@ public struct OneNoteWorkspaceView: View {
                             .font(.system(size: 8, weight: .semibold))
                             .opacity(0.65)
                     }
-                    .foregroundStyle(state.theme.secondaryInk)
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 2)
+                    .foregroundStyle(state.theme.primaryInk)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(state.theme.cardBackground, in: RoundedRectangle(cornerRadius: 7))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 7)
+                            .stroke(state.theme.subtleBorder, lineWidth: 1)
+                    )
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -480,14 +491,14 @@ public struct OneNoteWorkspaceView: View {
                 } label: {
                     Image(systemName: state.notesSubTab == .notebook ? "highlighter" : "book.pages")
                         .font(.caption)
-                        .foregroundStyle(state.notesSubTab == .highlights ? Color.accentColor : state.theme.secondaryInk)
+                        .foregroundStyle(state.notesSubTab == .highlights ? state.theme.accentColor : state.theme.secondaryInk)
                 }
                 .buttonStyle(.borderless)
                 .help(state.notesSubTab == .notebook ? "Tüm Vurgular Listesine Geç" : "OneNote Defterine Dön")
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
         .background(state.theme.chromeBackground)
     }
 
@@ -499,6 +510,7 @@ public struct OneNoteWorkspaceView: View {
             HStack {
                 Text("BÖLÜMLER")
                     .font(.system(size: 10, weight: .semibold))
+                    .tracking(0.6)
                     .foregroundStyle(state.theme.secondaryInk)
                 Spacer()
                 Button {
@@ -511,36 +523,30 @@ public struct OneNoteWorkspaceView: View {
                 .buttonStyle(.borderless)
                 .help("Yeni Bölüm Ekle")
             }
-            .padding(.horizontal, 10)
-            .padding(.top, 10)
-            .padding(.bottom, 6)
+            .padding(.horizontal, 12)
+            .padding(.top, 12)
+            .padding(.bottom, 7)
 
             ScrollView {
-                LazyVStack(spacing: 2) {
+                LazyVStack(spacing: 3) {
                     ForEach(state.notebookSections) { sec in
                         let isSelected = (sec.id == state.activeNotebookSectionID)
-                        Button {
+                        RailSelectableRow(isSelected: isSelected, theme: state.theme) {
                             state.selectNotebookSection(id: sec.id)
-                        } label: {
-                            HStack(spacing: 7) {
+                        } content: {
+                            HStack(spacing: 8) {
                                 Circle()
                                     .fill(sec.color.swiftUIColor)
-                                    .frame(width: 7, height: 7)
+                                    .frame(width: 7.5, height: 7.5)
                                 Text(sec.title)
-                                    .font(.caption.weight(isSelected ? .semibold : .regular))
+                                    .font(.system(size: 11.5, weight: isSelected ? .semibold : .medium))
                                     .foregroundStyle(isSelected ? state.theme.primaryInk : state.theme.secondaryInk)
                                     .lineLimit(1)
                                 Spacer()
                             }
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 5)
-                            .background(
-                                RoundedRectangle(cornerRadius: 6)
-                                    .fill(isSelected ? sec.color.swiftUIColor.opacity(0.16) : Color.clear)
-                            )
-                            .contentShape(Rectangle())
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 6.5)
                         }
-                        .buttonStyle(.plain)
                         .contextMenu {
                             Button("Yeniden Adlandır…") {
                                 renameDraft = sec.title
@@ -554,10 +560,10 @@ public struct OneNoteWorkspaceView: View {
                         }
                     }
                 }
-                .padding(.horizontal, 6)
-                .padding(.bottom, 6)
+                .padding(.horizontal, 8)
+                .padding(.bottom, 8)
             }
-            .frame(maxHeight: 170)
+            .frame(maxHeight: 185)
 
             Rectangle()
                 .fill(state.theme.subtleBorder)
@@ -567,6 +573,7 @@ public struct OneNoteWorkspaceView: View {
             HStack {
                 Text("SAYFALAR")
                     .font(.system(size: 10, weight: .semibold))
+                    .tracking(0.6)
                     .foregroundStyle(state.theme.secondaryInk)
                 Spacer()
                 Button {
@@ -579,36 +586,30 @@ public struct OneNoteWorkspaceView: View {
                 .buttonStyle(.borderless)
                 .help("Yeni Sayfa Ekle")
             }
-            .padding(.horizontal, 10)
-            .padding(.top, 10)
-            .padding(.bottom, 6)
+            .padding(.horizontal, 12)
+            .padding(.top, 12)
+            .padding(.bottom, 7)
 
             ScrollView {
-                LazyVStack(spacing: 2) {
+                LazyVStack(spacing: 3) {
                     ForEach(state.notebookPages) { page in
                         let isSelected = (page.id == state.activeNotebookPageID)
-                        Button {
+                        RailSelectableRow(isSelected: isSelected, theme: state.theme) {
                             state.selectNotebookPage(id: page.id)
-                        } label: {
-                            HStack(spacing: 6) {
+                        } content: {
+                            HStack(spacing: 7) {
                                 Image(systemName: "doc.text")
                                     .font(.system(size: 10))
-                                    .foregroundStyle(isSelected ? Color.accentColor : state.theme.secondaryInk.opacity(0.7))
+                                    .foregroundStyle(isSelected ? state.theme.accentColor : state.theme.secondaryInk.opacity(0.75))
                                 Text(page.title)
-                                    .font(.caption.weight(isSelected ? .semibold : .regular))
+                                    .font(.system(size: 11.5, weight: isSelected ? .semibold : .medium))
                                     .foregroundStyle(isSelected ? state.theme.primaryInk : state.theme.secondaryInk)
                                     .lineLimit(1)
                                 Spacer()
                             }
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 5)
-                            .background(
-                                RoundedRectangle(cornerRadius: 6)
-                                    .fill(isSelected ? Color.accentColor.opacity(0.12) : Color.clear)
-                            )
-                            .contentShape(Rectangle())
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 6.5)
                         }
-                        .buttonStyle(.plain)
                         .contextMenu {
                             Button("Yeniden Adlandır…") {
                                 renameDraft = page.title
@@ -622,11 +623,11 @@ public struct OneNoteWorkspaceView: View {
                         }
                     }
                 }
-                .padding(.horizontal, 6)
-                .padding(.bottom, 8)
+                .padding(.horizontal, 8)
+                .padding(.bottom, 10)
             }
         }
-        .frame(width: 175)
+        .frame(width: 190)
         .background(state.theme.chromeBackground)
     }
 
@@ -742,13 +743,13 @@ public struct OneNoteWorkspaceView: View {
                 } label: {
                     Image(systemName: "checkmark.circle.fill")
                         .font(.caption)
-                        .foregroundStyle(state.theme.secondaryInk)
+                        .foregroundStyle(state.theme.accentColor)
                 }
                 .buttonStyle(.plain)
                 .help("Düzenlemeyi Bitir")
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
         }
         .background(state.theme.chromeBackground)
         .transition(.move(edge: .top).combined(with: .opacity))
@@ -760,9 +761,15 @@ public struct OneNoteWorkspaceView: View {
         } label: {
             Text(title)
                 .font(.caption2.weight(.semibold))
-                .frame(minWidth: 20)
+                .foregroundStyle(state.theme.primaryInk)
+                .frame(minWidth: 22, minHeight: 20)
+                .background(state.theme.cardBackground.opacity(0.65), in: RoundedRectangle(cornerRadius: 5))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 5)
+                        .stroke(state.theme.subtleBorder, lineWidth: 0.7)
+                )
         }
-        .buttonStyle(.borderless)
+        .buttonStyle(.plain)
     }
 
     private func formatIconBtn(_ systemName: String, _ action: RichTextFormatAction, help: String) -> some View {
@@ -771,9 +778,15 @@ public struct OneNoteWorkspaceView: View {
         } label: {
             Image(systemName: systemName)
                 .font(.caption2)
-                .frame(width: 20, height: 18)
+                .foregroundStyle(state.theme.primaryInk)
+                .frame(width: 22, height: 20)
+                .background(state.theme.cardBackground.opacity(0.65), in: RoundedRectangle(cornerRadius: 5))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 5)
+                        .stroke(state.theme.subtleBorder, lineWidth: 0.7)
+                )
         }
-        .buttonStyle(.borderless)
+        .buttonStyle(.plain)
         .help(help)
     }
 
@@ -867,12 +880,19 @@ public struct OneNoteWorkspaceView: View {
     }
 
     private var onPaperPageHeader: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        let headingFont: Font = {
+            if state.notebookFontFamily == NotebookFontCatalog.systemKey {
+                return .system(size: 24, weight: .semibold, design: .serif)
+            }
+            return NotebookFontCatalog.swiftUIFont(family: state.notebookFontFamily, size: 23, weight: .semibold)
+        }()
+
+        return VStack(alignment: .leading, spacing: 5) {
             TextField("Sayfa Başlığı", text: $pageTitleDraft)
                 .textFieldStyle(.plain)
-                .font(NotebookFontCatalog.swiftUIFont(family: state.notebookFontFamily, size: 21, weight: .semibold))
-                .foregroundStyle(Color(nsColor: defaultInkNSColor))
-                .frame(width: 340, alignment: .leading)
+                .font(headingFont)
+                .foregroundStyle(state.theme.primaryInk)
+                .frame(width: 360, alignment: .leading)
                 .focused($isPageTitleFocused)
                 .onSubmit {
                     titleSaveTask?.cancel()
@@ -889,15 +909,22 @@ public struct OneNoteWorkspaceView: View {
                     }
                 }
 
-            Rectangle()
-                .fill(Color(nsColor: defaultInkNSColor).opacity(0.18))
-                .frame(width: 320, height: 1)
-
             if let page = state.activeNotebookPage {
-                Text(Self.turkishDateFormatter.string(from: page.createdAt))
-                    .font(.caption2)
-                    .foregroundStyle(Color(nsColor: defaultInkNSColor).opacity(0.45))
+                HStack(spacing: 5) {
+                    Text(Self.turkishDateFormatter.string(from: page.createdAt))
+                    if let secTitle = activeSection?.title, !secTitle.isEmpty {
+                        Text("·")
+                        Text(secTitle)
+                    }
+                }
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(state.theme.secondaryInk)
             }
+
+            Rectangle()
+                .fill(state.theme.subtleBorder)
+                .frame(width: 340, height: 1)
+                .padding(.top, 2)
         }
     }
 
@@ -1024,8 +1051,8 @@ public struct OneNoteWorkspaceView: View {
     private var defaultInkNSColor: NSColor {
         switch state.theme {
         case .original: return .labelColor
-        case .sepia: return NSColor(calibratedRed: 0.22, green: 0.17, blue: 0.11, alpha: 1.0)
-        case .softDark: return NSColor(calibratedRed: 0.90, green: 0.90, blue: 0.92, alpha: 1.0)
+        case .sepia: return NSColor(calibratedRed: 0.180, green: 0.145, blue: 0.102, alpha: 1.0)
+        case .softDark: return NSColor(calibratedRed: 0.918, green: 0.925, blue: 0.937, alpha: 1.0)
         }
     }
 
@@ -1178,9 +1205,15 @@ private struct PaperBackgroundView: View {
 
     private var patternColor: Color {
         switch theme {
-        case .original: return Color.secondary.opacity(0.20)
-        case .sepia: return Color(red: 0.56, green: 0.45, blue: 0.30).opacity(0.20)
-        case .softDark: return Color.white.opacity(0.08)
+        case .original:
+            return Color(nsColor: NSColor(name: nil) { appearance in
+                let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+                return isDark
+                    ? NSColor.white.withAlphaComponent(0.085)
+                    : NSColor(calibratedRed: 0.059, green: 0.090, blue: 0.165, alpha: 0.09)
+            })
+        case .sepia: return Color(red: 0.290, green: 0.224, blue: 0.141).opacity(0.11)
+        case .softDark: return Color.white.opacity(0.085)
         }
     }
 }
@@ -1222,14 +1255,14 @@ private struct NoteContainerCardView: View {
         if container.kind == .richText && !showChrome {
             return .clear
         }
-        switch theme {
-        case .original:
-            return Color(nsColor: .windowBackgroundColor).opacity(container.kind == .richText ? 0.55 : 0.82)
-        case .sepia:
-            return Color(red: 0.98, green: 0.95, blue: 0.88).opacity(container.kind == .richText ? 0.65 : 0.88)
-        case .softDark:
-            return Color(red: 0.15, green: 0.16, blue: 0.18).opacity(container.kind == .richText ? 0.65 : 0.88)
+        if container.kind == .richText {
+            return theme.cardBackground.opacity(0.92)
         }
+        return theme.cardBackground
+    }
+
+    private var quoteStripeColor: Color {
+        container.accentColor?.swiftUIColor ?? theme.quoteAccentColor
     }
 
     var body: some View {
@@ -1244,21 +1277,23 @@ private struct NoteContainerCardView: View {
                     Button {
                         onJumpToSourcePage(srcPage)
                     } label: {
-                        HStack(spacing: 3) {
-                            if let accent = container.accentColor {
-                                Circle()
-                                    .fill(accent.swiftUIColor)
-                                    .frame(width: 6, height: 6)
-                            }
+                        HStack(spacing: 4) {
                             Text("s. \(srcPage + 1)")
-                                .font(.caption2.monospacedDigit().weight(.semibold))
+                                .font(.system(size: 10, weight: .semibold).monospacedDigit())
+                                .foregroundStyle(theme.accentColor)
                         }
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 1)
-                        .background(Color.accentColor.opacity(0.18), in: Capsule())
+                        .padding(.horizontal, 6.5)
+                        .padding(.vertical, 2)
+                        .background(theme.accentSoftBackground, in: RoundedRectangle(cornerRadius: 5))
                     }
                     .buttonStyle(.plain)
                     .help("PDF'te Sayfa \(srcPage + 1)'e Git")
+
+                    if let accent = container.accentColor {
+                        Text(accent.meaningLabel)
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(theme.secondaryInk)
+                    }
                 }
 
                 Spacer()
@@ -1347,24 +1382,18 @@ private struct NoteContainerCardView: View {
                 .padding(.bottom, 6)
 
             case .pdfQuote:
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 5) {
                     if let quote = container.quoteText, !quote.isEmpty {
                         ScrollView {
                             Text("“\(quote)”")
-                                .font(.caption)
-                                .foregroundStyle(Color(nsColor: inkColor).opacity(0.80))
+                                .font(.system(size: 12))
+                                .lineSpacing(2.5)
+                                .foregroundStyle(theme.primaryInk.opacity(0.9))
                                 .textSelection(.enabled)
                                 .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.leading, 8)
-                                .overlay(alignment: .leading) {
-                                    Rectangle()
-                                        .fill((container.accentColor ?? .yellow).swiftUIColor)
-                                        .frame(width: 3)
-                                        .clipShape(Capsule())
-                                }
                         }
-                        .frame(maxHeight: 72)
-                        .padding(.horizontal, 8)
+                        .frame(maxHeight: 78)
+                        .padding(.horizontal, 10)
                         .padding(.top, 2)
                     }
 
@@ -1414,20 +1443,35 @@ private struct NoteContainerCardView: View {
                 }
             }
         }
+        .padding(.leading, container.kind == .pdfQuote ? 5 : 0)
         .frame(width: currentWidth, height: currentHeight, alignment: .topLeading)
-        .background(cardBackground, in: RoundedRectangle(cornerRadius: 8))
+        .background(cardBackground, in: RoundedRectangle(cornerRadius: 10))
+        .overlay(alignment: .leading) {
+            if container.kind == .pdfQuote {
+                Rectangle()
+                    .fill(quoteStripeColor)
+                    .frame(width: 3.5)
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 10))
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: 10)
                 .stroke(
                     isHighlighted
-                        ? Color.accentColor
+                        ? theme.accentColor
                         : (showChrome
-                            ? (container.accentColor?.swiftUIColor ?? Color.accentColor).opacity(isFocused ? 0.65 : 0.30)
-                            : (container.kind == .pdfQuote ? (container.accentColor ?? .yellow).swiftUIColor.opacity(0.22) : Color.clear)),
-                    lineWidth: isHighlighted ? 2.2 : (isFocused ? 1.2 : 0.8)
+                            ? (container.accentColor?.swiftUIColor ?? theme.accentColor).opacity(isFocused ? 0.55 : 0.28)
+                            : (container.kind != .richText ? theme.subtleBorder : Color.clear)),
+                    lineWidth: isHighlighted ? 2.2 : (isFocused ? 1.2 : 1)
                 )
         )
-        .shadow(color: isHighlighted ? Color.accentColor.opacity(0.32) : .clear, radius: isHighlighted ? 10 : 0)
+        .shadow(
+            color: isHighlighted
+                ? theme.accentColor.opacity(0.32)
+                : ((container.kind != .richText || showChrome) ? theme.cardShadowColor : .clear),
+            radius: isHighlighted ? 10 : ((container.kind != .richText || showChrome) ? theme.cardShadowRadius : 0),
+            y: isHighlighted ? 0 : ((container.kind != .richText || showChrome) ? theme.cardShadowY : 0)
+        )
         .animation(.easeInOut(duration: 0.22), value: isHighlighted)
         .overlay(alignment: .bottomTrailing) {
             if showChrome {
@@ -1629,17 +1673,17 @@ private struct NotebookFontPickerPopover: View {
                 if isSelected {
                     Image(systemName: "checkmark")
                         .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(Color.accentColor)
+                        .foregroundStyle(theme.accentColor)
                 }
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
             .background(
-                RoundedRectangle(cornerRadius: 5)
+                RoundedRectangle(cornerRadius: 6)
                     .fill(
                         isSelected
-                            ? Color.accentColor.opacity(0.14)
-                            : (isHovered ? theme.primaryInk.opacity(0.07) : Color.clear)
+                            ? theme.accentSoftBackground
+                            : (isHovered ? theme.hoverFill : Color.clear)
                     )
             )
             .padding(.horizontal, 4)
@@ -1648,6 +1692,41 @@ private struct NotebookFontPickerPopover: View {
         .buttonStyle(.plain)
         .onHover { hovering in
             hoveredFamily = hovering ? family : (hoveredFamily == family ? nil : hoveredFamily)
+        }
+    }
+}
+
+private struct RailSelectableRow<Content: View>: View {
+    let isSelected: Bool
+    let theme: ReadingTheme
+    let action: () -> Void
+    @ViewBuilder let content: () -> Content
+
+    @State private var isHovered: Bool = false
+
+    var body: some View {
+        Button(action: action) {
+            content()
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(isSelected ? theme.cardBackground : (isHovered ? theme.hoverFill : Color.clear))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(isSelected ? theme.subtleBorder : Color.clear, lineWidth: 1)
+                )
+                .shadow(
+                    color: isSelected ? theme.cardShadowColor : .clear,
+                    radius: isSelected ? 4 : 0,
+                    y: isSelected ? 1.5 : 0
+                )
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering in
+            withAnimation(.easeOut(duration: 0.12)) {
+                isHovered = hovering
+            }
         }
     }
 }

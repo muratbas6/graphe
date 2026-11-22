@@ -33,30 +33,50 @@ public struct LibrarySidebarView: View {
 
     public var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 16) {
+            // Warm Editorial Segmented Control (Kitaplar / Defterler / İçindekiler)
+            HStack(spacing: 2) {
                 ForEach(LeftPanelTab.allCases) { tab in
                     let isSelected = state.leftPanelTab == tab
                     Button {
-                        withAnimation(.easeInOut(duration: 0.14)) {
+                        withAnimation(.easeInOut(duration: 0.16)) {
                             state.leftPanelTab = tab
                         }
                     } label: {
-                        VStack(spacing: 5) {
-                            Text(tab.rawValue)
-                                .font(.caption.weight(isSelected ? .semibold : .regular))
-                                .foregroundStyle(isSelected ? state.theme.primaryInk : state.theme.secondaryInk)
-                            Rectangle()
-                                .fill(isSelected ? Color.accentColor : Color.clear)
-                                .frame(height: 1.5)
-                        }
+                        Text(tab.rawValue)
+                            .font(.system(size: 11, weight: isSelected ? .semibold : .medium))
+                            .foregroundStyle(isSelected ? state.theme.primaryInk : state.theme.secondaryInk)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                            .padding(.horizontal, 3)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 5.5)
+                            .background(
+                                RoundedRectangle(cornerRadius: 7)
+                                    .fill(isSelected ? state.theme.cardBackground : Color.clear)
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 7)
+                                    .stroke(isSelected ? state.theme.subtleBorder : Color.clear, lineWidth: 0.8)
+                            )
+                            .shadow(
+                                color: isSelected ? state.theme.cardShadowColor : .clear,
+                                radius: isSelected ? 3 : 0,
+                                y: isSelected ? 1 : 0
+                            )
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                 }
-                Spacer()
             }
-            .padding(.horizontal, 14)
-            .padding(.top, 10)
-            .padding(.bottom, 2)
+            .padding(3)
+            .background(state.theme.windowBackground, in: RoundedRectangle(cornerRadius: 9))
+            .overlay(
+                RoundedRectangle(cornerRadius: 9)
+                    .stroke(state.theme.subtleBorder, lineWidth: 1)
+            )
+            .padding(.horizontal, 10)
+            .padding(.top, 11)
+            .padding(.bottom, 9)
 
             Rectangle()
                 .fill(state.theme.subtleBorder)
@@ -260,8 +280,9 @@ public struct LibrarySidebarView: View {
     private var standaloneNotebooksSection: some View {
         VStack(spacing: 0) {
             HStack {
-                Text("Bağımsız Defterlerim")
-                    .font(.caption.weight(.semibold))
+                Text("BAĞIMSIZ DEFTERLER")
+                    .font(.system(size: 10, weight: .semibold))
+                    .tracking(0.6)
                     .foregroundStyle(state.theme.secondaryInk)
                 Spacer()
                 Button {
@@ -269,17 +290,21 @@ public struct LibrarySidebarView: View {
                 } label: {
                     Label("Yeni", systemImage: "plus")
                         .font(.caption2.weight(.semibold))
+                        .foregroundStyle(state.theme.primaryInk)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3.5)
+                        .background(state.theme.cardBackground, in: RoundedRectangle(cornerRadius: 6))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(state.theme.subtleBorder, lineWidth: 1)
+                        )
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.mini)
+                .buttonStyle(.plain)
                 .help("Yeni Bağımsız Defter Oluştur (⌘N)")
             }
             .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-
-            Rectangle()
-                .fill(state.theme.subtleBorder)
-                .frame(height: 1)
+            .padding(.top, 10)
+            .padding(.bottom, 8)
 
             if state.standaloneNotebooks.isEmpty {
                 VStack(spacing: 10) {
@@ -308,36 +333,30 @@ public struct LibrarySidebarView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollView {
-                    LazyVStack(spacing: 3) {
+                    LazyVStack(spacing: 4) {
                         ForEach(state.standaloneNotebooks) { nb in
                             let isActive = (state.activeStandaloneNotebookID == nb.id)
-                            Button {
+                            SidebarSelectableRow(isSelected: isActive, theme: state.theme) {
                                 state.openStandaloneNotebook(id: nb.id)
-                            } label: {
-                                HStack(spacing: 8) {
+                            } content: {
+                                HStack(spacing: 9) {
                                     Circle()
                                         .fill(nb.color.swiftUIColor)
                                         .frame(width: 8, height: 8)
-                                    VStack(alignment: .leading, spacing: 1) {
+                                    VStack(alignment: .leading, spacing: 2) {
                                         Text(nb.title)
-                                            .font(.caption.weight(isActive ? .semibold : .medium))
-                                            .foregroundStyle(state.theme.primaryInk)
+                                            .font(.system(size: 12, weight: isActive ? .semibold : .medium))
+                                            .foregroundStyle(isActive ? state.theme.primaryInk : state.theme.primaryInk.opacity(0.88))
                                             .lineLimit(1)
                                         Text(nb.updatedAt, style: .date)
                                             .font(.system(size: 9.5))
-                                            .foregroundStyle(state.theme.secondaryInk.opacity(0.8))
+                                            .foregroundStyle(state.theme.secondaryInk.opacity(0.85))
                                     }
                                     Spacer()
                                 }
                                 .padding(.horizontal, 10)
-                                .padding(.vertical, 7)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 7)
-                                        .fill(isActive ? nb.color.swiftUIColor.opacity(0.15) : Color.clear)
-                                )
-                                .contentShape(Rectangle())
+                                .padding(.vertical, 8)
                             }
-                            .buttonStyle(.plain)
                             .contextMenu {
                                 Button("Yeniden Adlandır…") {
                                     renameNotebookDraft = nb.title
@@ -357,7 +376,8 @@ public struct LibrarySidebarView: View {
                             }
                         }
                     }
-                    .padding(8)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
                 }
             }
         }
@@ -368,16 +388,16 @@ public struct LibrarySidebarView: View {
     private var librarySection: some View {
         VStack(spacing: 0) {
             // Global FTS5 Search bar across all books, highlights & OneNote notebooks
-            HStack(spacing: 6) {
+            HStack(spacing: 7) {
                 Image(systemName: "magnifyingglass")
                     .font(.caption)
                     .foregroundStyle(state.theme.secondaryInk)
-                TextField("Tüm kitap ve notlarda ara...", text: Binding(
+                TextField("Kütüphanede ara…", text: Binding(
                     get: { state.globalSearchQuery },
                     set: { state.scheduleGlobalSearch($0) }
                 ))
                 .textFieldStyle(.plain)
-                .font(.caption)
+                .font(.system(size: 11.5))
                 .foregroundStyle(state.theme.primaryInk)
 
                 if !state.globalSearchQuery.isEmpty {
@@ -391,37 +411,41 @@ public struct LibrarySidebarView: View {
                     .buttonStyle(.plain)
                 }
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
-            .background(state.theme.surfaceBackground.opacity(0.8), in: RoundedRectangle(cornerRadius: 7))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(state.theme.cardBackground, in: RoundedRectangle(cornerRadius: 9))
             .overlay(
-                RoundedRectangle(cornerRadius: 7)
+                RoundedRectangle(cornerRadius: 9)
                     .stroke(state.theme.subtleBorder, lineWidth: 1)
             )
-            .padding(.horizontal, 10)
-            .padding(.top, 8)
-            .padding(.bottom, 6)
+            .padding(.horizontal, 12)
+            .padding(.top, 10)
+            .padding(.bottom, 8)
 
             if !state.globalSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 globalSearchResultsList
             } else {
                 // Compact mode switcher: Klasörler | Tümü + Folder Actions
-                HStack(spacing: 6) {
+                HStack(spacing: 5) {
                     ForEach(LibraryViewMode.allCases) { mode in
                         let isSelected = state.libraryViewMode == mode
                         Button {
-                            withAnimation(.easeInOut(duration: 0.12)) {
+                            withAnimation(.easeInOut(duration: 0.14)) {
                                 state.libraryViewMode = mode
                             }
                         } label: {
                             Text(mode.rawValue)
-                                .font(.caption2.weight(isSelected ? .semibold : .regular))
+                                .font(.system(size: 10.5, weight: isSelected ? .semibold : .medium))
                                 .foregroundStyle(isSelected ? state.theme.primaryInk : state.theme.secondaryInk)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 3)
+                                .padding(.horizontal, 9)
+                                .padding(.vertical, 3.5)
                                 .background(
-                                    isSelected ? state.theme.subtleBorder : Color.clear,
-                                    in: Capsule()
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .fill(isSelected ? state.theme.cardBackground : Color.clear)
+                                )
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .stroke(isSelected ? state.theme.subtleBorder : Color.clear, lineWidth: 0.8)
                                 )
                         }
                         .buttonStyle(.plain)
@@ -463,8 +487,8 @@ public struct LibrarySidebarView: View {
                         .help("PDF Dosyası Aç (⌘O)")
                     }
                 }
-                .padding(.horizontal, 10)
-                .padding(.bottom, 6)
+                .padding(.horizontal, 12)
+                .padding(.bottom, 7)
 
                 switch state.libraryViewMode {
                 case .folders:
@@ -542,12 +566,16 @@ public struct LibrarySidebarView: View {
                         } label: {
                             Text("Tümü")
                                 .font(.caption2.weight(state.selectedTagFilter == nil ? .semibold : .regular))
-                                .foregroundStyle(state.selectedTagFilter == nil ? Color.accentColor : state.theme.primaryInk)
-                                .padding(.horizontal, 7)
-                                .padding(.vertical, 3)
+                                .foregroundStyle(state.selectedTagFilter == nil ? state.theme.accentColor : state.theme.primaryInk)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 3.5)
                                 .background(
-                                    state.selectedTagFilter == nil ? Color.accentColor.opacity(0.18) : state.theme.subtleBorder,
+                                    state.selectedTagFilter == nil ? state.theme.accentSoftBackground : state.theme.cardBackground,
                                     in: Capsule()
+                                )
+                                .overlay(
+                                    Capsule()
+                                        .stroke(state.selectedTagFilter == nil ? state.theme.accentColor.opacity(0.3) : state.theme.subtleBorder, lineWidth: 0.8)
                                 )
                         }
                         .buttonStyle(.plain)
@@ -558,12 +586,16 @@ public struct LibrarySidebarView: View {
                             } label: {
                                 Text("#\(tag)")
                                     .font(.caption2.weight(state.selectedTagFilter == tag ? .semibold : .regular))
-                                    .foregroundStyle(state.selectedTagFilter == tag ? Color.accentColor : state.theme.primaryInk)
-                                    .padding(.horizontal, 7)
-                                    .padding(.vertical, 3)
+                                    .foregroundStyle(state.selectedTagFilter == tag ? state.theme.accentColor : state.theme.primaryInk)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 3.5)
                                     .background(
-                                        state.selectedTagFilter == tag ? Color.accentColor.opacity(0.18) : state.theme.subtleBorder,
+                                        state.selectedTagFilter == tag ? state.theme.accentSoftBackground : state.theme.cardBackground,
                                         in: Capsule()
+                                    )
+                                    .overlay(
+                                        Capsule()
+                                            .stroke(state.selectedTagFilter == tag ? state.theme.accentColor.opacity(0.3) : state.theme.subtleBorder, lineWidth: 0.8)
                                     )
                             }
                             .buttonStyle(.plain)
@@ -584,115 +616,126 @@ public struct LibrarySidebarView: View {
                 )
                 .frame(maxHeight: .infinity)
             } else {
-                List {
-                    ForEach(state.filteredLibraryDocuments) { doc in
-                        let isActiveDoc = state.activeTab?.activePane.url.path == doc.url.path
-                        VStack(alignment: .leading, spacing: 3) {
-                            HStack(spacing: 4) {
-                                Text(doc.title)
-                                    .font(.callout.weight(isActiveDoc ? .semibold : .regular))
-                                    .foregroundStyle(isActiveDoc ? Color.accentColor : state.theme.primaryInk)
-                                    .lineLimit(1)
-                                Spacer()
-                                if state.indexingDocumentHashes.contains(doc.hash) {
-                                    ProgressView()
-                                        .controlSize(.mini)
-                                        .help("Tam metin indeksleniyor...")
-                                } else if doc.isIndexed {
-                                    Image(systemName: "text.magnifyingglass")
-                                        .font(.caption2)
-                                        .foregroundStyle(state.theme.secondaryInk)
-                                        .help("FTS5 Tam Metin İndeksi Hazır")
-                                }
-                            }
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 4) {
+                        Text("KİTAPLAR")
+                            .font(.system(size: 10, weight: .semibold))
+                            .tracking(0.6)
+                            .foregroundStyle(state.theme.secondaryInk)
+                            .padding(.horizontal, 6)
+                            .padding(.top, 2)
+                            .padding(.bottom, 2)
 
-                            HStack(spacing: 6) {
-                                let subtitle: String = {
-                                    let parts = [doc.author, doc.year.map(String.init)].compactMap { $0?.isEmpty == false ? $0 : nil }
-                                    return parts.isEmpty ? doc.url.deletingLastPathComponent().lastPathComponent : parts.joined(separator: " · ")
-                                }()
-                                Text(subtitle)
-                                    .font(.caption2)
-                                    .foregroundStyle(state.theme.secondaryInk)
-                                    .lineLimit(1)
-                                Spacer(minLength: 4)
-                                if let prog = state.readingProgress(for: doc) {
-                                    Text("s. \(prog.page)/\(doc.pageCount)")
-                                        .font(.system(size: 10).monospacedDigit())
-                                        .foregroundStyle(state.theme.secondaryInk)
-                                } else if doc.pageCount > 0 {
-                                    Text("\(doc.pageCount) s.")
-                                        .font(.system(size: 10).monospacedDigit())
-                                        .foregroundStyle(state.theme.secondaryInk)
-                                }
-                            }
-
-                            if let prog = state.readingProgress(for: doc) {
-                                GeometryReader { geo in
-                                    ZStack(alignment: .leading) {
-                                        Capsule()
-                                            .fill(state.theme.subtleBorder)
-                                        Capsule()
-                                            .fill(Color.accentColor.opacity(0.65))
-                                            .frame(width: max(4, geo.size.width * prog.fraction))
+                        ForEach(state.filteredLibraryDocuments) { doc in
+                            let isActiveDoc = state.activeStandaloneNotebookID == nil && state.activeTab?.activePane.url.path == doc.url.path
+                            SidebarSelectableRow(isSelected: isActiveDoc, theme: state.theme) {
+                                state.openDocument(at: doc.url, inNewTab: false)
+                            } content: {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    HStack(spacing: 5) {
+                                        Text(doc.title)
+                                            .font(.system(size: 12, weight: isActiveDoc ? .semibold : .medium))
+                                            .foregroundStyle(isActiveDoc ? state.theme.primaryInk : state.theme.primaryInk.opacity(0.9))
+                                            .lineLimit(1)
+                                        Spacer()
+                                        if state.indexingDocumentHashes.contains(doc.hash) {
+                                            ProgressView()
+                                                .controlSize(.mini)
+                                                .help("Tam metin indeksleniyor...")
+                                        } else if doc.isIndexed {
+                                            Image(systemName: "text.magnifyingglass")
+                                                .font(.system(size: 9.5))
+                                                .foregroundStyle(isActiveDoc ? state.theme.accentColor : state.theme.secondaryInk.opacity(0.75))
+                                                .help("FTS5 Tam Metin İndeksi Hazır")
+                                        }
                                     }
-                                }
-                                .frame(height: 2)
-                                .padding(.top, 2)
-                            }
 
-                            if !doc.tags.isEmpty {
-                                HStack(spacing: 4) {
-                                    ForEach(doc.tags.prefix(3), id: \.self) { tag in
-                                        Text("#\(tag)")
-                                            .font(.system(size: 10))
+                                    HStack(spacing: 6) {
+                                        let subtitle: String = {
+                                            let parts = [doc.author, doc.year.map(String.init)].compactMap { $0?.isEmpty == false ? $0 : nil }
+                                            return parts.isEmpty ? doc.url.deletingLastPathComponent().lastPathComponent : parts.joined(separator: " · ")
+                                        }()
+                                        Text(subtitle)
+                                            .font(.caption2)
                                             .foregroundStyle(state.theme.secondaryInk)
-                                            .padding(.horizontal, 5)
-                                            .padding(.vertical, 1)
-                                            .background(state.theme.subtleBorder, in: Capsule())
+                                            .lineLimit(1)
+                                        Spacer(minLength: 4)
+                                        if let prog = state.readingProgress(for: doc) {
+                                            Text("s. \(prog.page)/\(doc.pageCount)")
+                                                .font(.system(size: 10).monospacedDigit())
+                                                .foregroundStyle(state.theme.secondaryInk)
+                                        } else if doc.pageCount > 0 {
+                                            Text("\(doc.pageCount) s.")
+                                                .font(.system(size: 10).monospacedDigit())
+                                                .foregroundStyle(state.theme.secondaryInk)
+                                        }
+                                    }
+
+                                    if let prog = state.readingProgress(for: doc) {
+                                        GeometryReader { geo in
+                                            ZStack(alignment: .leading) {
+                                                Capsule()
+                                                    .fill(state.theme.subtleBorder)
+                                                Capsule()
+                                                    .fill(state.theme.accentColor.opacity(0.75))
+                                                    .frame(width: max(4, geo.size.width * prog.fraction))
+                                            }
+                                        }
+                                        .frame(height: 2.5)
+                                        .padding(.top, 1)
+                                    }
+
+                                    if !doc.tags.isEmpty {
+                                        HStack(spacing: 4) {
+                                            ForEach(doc.tags.prefix(3), id: \.self) { tag in
+                                                Text("#\(tag)")
+                                                    .font(.system(size: 9.5))
+                                                    .foregroundStyle(state.theme.secondaryInk)
+                                                    .padding(.horizontal, 6)
+                                                    .padding(.vertical, 1.5)
+                                                    .background(state.theme.windowBackground, in: Capsule())
+                                            }
+                                        }
                                     }
                                 }
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 8)
                             }
-                        }
-                        .padding(.vertical, 2)
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            state.openDocument(at: doc.url, inNewTab: false)
-                        }
-                        .contextMenu {
-                            Button("Yeni Sekmede Aç") {
-                                state.openDocument(at: doc.url, inNewTab: true)
-                            }
-                            Button("Yan Yana (Sağ Panelde) Aç") {
-                                state.openInSecondarySplit(url: doc.url)
-                            }
-                            Divider()
-                            Button("Metadata & Adlandırma...") {
-                                state.editingMetadataDocument = doc
-                            }
-                            Menu("Atıf Kopyala") {
-                                ForEach(CitationStyle.allCases) { style in
-                                    Button(style.rawValue) {
-                                        state.copyCitationToPasteboard(forDocumentHash: doc.hash, style: style)
+                            .contextMenu {
+                                Button("Yeni Sekmede Aç") {
+                                    state.openDocument(at: doc.url, inNewTab: true)
+                                }
+                                Button("Yan Yana (Sağ Panelde) Aç") {
+                                    state.openInSecondarySplit(url: doc.url)
+                                }
+                                Divider()
+                                Button("Metadata & Adlandırma...") {
+                                    state.editingMetadataDocument = doc
+                                }
+                                Menu("Atıf Kopyala") {
+                                    ForEach(CitationStyle.allCases) { style in
+                                        Button(style.rawValue) {
+                                            state.copyCitationToPasteboard(forDocumentHash: doc.hash, style: style)
+                                        }
                                     }
                                 }
-                            }
-                            Button("Etiketleri Düzenle...") {
-                                tagEditInput = doc.tags.joined(separator: ", ")
-                                editingTagDocument = doc
-                            }
-                            Button("Finder'da Göster") {
-                                state.revealInFinder(at: doc.url)
-                            }
-                            Divider()
-                            Button("Kütüphaneden Kaldır", role: .destructive) {
-                                state.removeLibraryDocument(hash: doc.hash)
+                                Button("Etiketleri Düzenle...") {
+                                    tagEditInput = doc.tags.joined(separator: ", ")
+                                    editingTagDocument = doc
+                                }
+                                Button("Finder'da Göster") {
+                                    state.revealInFinder(at: doc.url)
+                                }
+                                Divider()
+                                Button("Kütüphaneden Kaldır", role: .destructive) {
+                                    state.removeLibraryDocument(hash: doc.hash)
+                                }
                             }
                         }
                     }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
                 }
-                .listStyle(.sidebar)
-                .scrollContentBackground(.hidden)
             }
         }
     }
@@ -721,9 +764,10 @@ public struct LibrarySidebarView: View {
                                     }
                                     Text(result.kind.displayBadge)
                                         .font(.caption2.weight(.semibold))
-                                        .padding(.horizontal, 5)
-                                        .padding(.vertical, 1)
-                                        .background(Color.accentColor.opacity(0.15), in: Capsule())
+                                        .foregroundStyle(state.theme.accentColor)
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 1.5)
+                                        .background(state.theme.accentSoftBackground, in: Capsule())
 
                                     Text(result.documentTitle)
                                         .font(.caption.weight(.medium))
@@ -778,7 +822,7 @@ public struct LibrarySidebarView: View {
                                     HStack(spacing: 6) {
                                         Image(systemName: "bookmark.fill")
                                             .font(.caption2)
-                                            .foregroundStyle(Color.accentColor)
+                                            .foregroundStyle(state.theme.accentColor)
                                         Text(bm.label.isEmpty ? "Sayfa \(bm.pageIndex + 1)" : bm.label)
                                             .font(.callout)
                                             .foregroundStyle(state.theme.primaryInk)
@@ -861,13 +905,14 @@ private struct FileTreeNodeRow: View {
     let onRequestRename: (FileTreeNode) -> Void
 
     @State private var isDropTargeted: Bool = false
+    @State private var isHovered: Bool = false
 
     private var isExpanded: Bool {
         expandedPaths.contains(node.id)
     }
 
     private var isActiveDocument: Bool {
-        !node.isDirectory && state.activeTab?.activePane.url.path == node.url.path
+        !node.isDirectory && state.activeStandaloneNotebookID == nil && state.activeTab?.activePane.url.path == node.url.path
     }
 
     var body: some View {
@@ -901,7 +946,7 @@ private struct FileTreeNodeRow: View {
 
             Image(systemName: node.isRootFolder ? "books.vertical.fill" : (isExpanded ? "folder.fill" : "folder"))
                 .font(.caption)
-                .foregroundStyle(node.isRootFolder ? Color.accentColor : state.theme.secondaryInk)
+                .foregroundStyle(node.isRootFolder ? state.theme.accentColor : state.theme.secondaryInk)
 
             Text(node.name)
                 .font(.caption.weight(node.isRootFolder ? .semibold : .medium))
@@ -920,14 +965,19 @@ private struct FileTreeNodeRow: View {
         .padding(.trailing, 6)
         .padding(.vertical, 5)
         .background(
-            RoundedRectangle(cornerRadius: 6)
-                .fill(isDropTargeted ? Color.accentColor.opacity(0.18) : Color.clear)
+            RoundedRectangle(cornerRadius: 7)
+                .fill(isDropTargeted ? state.theme.accentSoftBackground : (isHovered ? state.theme.hoverFill : Color.clear))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 6)
-                .stroke(isDropTargeted ? Color.accentColor.opacity(0.7) : Color.clear, lineWidth: 1)
+            RoundedRectangle(cornerRadius: 7)
+                .stroke(isDropTargeted ? state.theme.accentColor.opacity(0.6) : Color.clear, lineWidth: 1)
         )
         .contentShape(Rectangle())
+        .onHover { hovering in
+            withAnimation(.easeOut(duration: 0.12)) {
+                isHovered = hovering
+            }
+        }
         .onTapGesture {
             withAnimation(.easeInOut(duration: 0.14)) {
                 if isExpanded {
@@ -975,29 +1025,43 @@ private struct FileTreeNodeRow: View {
     }
 
     private var pdfFileRow: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 7) {
             Image(systemName: "doc.text")
                 .font(.caption2)
-                .foregroundStyle(isActiveDocument ? Color.accentColor : state.theme.secondaryInk)
+                .foregroundStyle(isActiveDocument ? state.theme.accentColor : state.theme.secondaryInk)
                 .frame(width: 12)
 
             Text(node.name)
-                .font(.caption.weight(isActiveDocument ? .semibold : .regular))
+                .font(.system(size: 11.5, weight: isActiveDocument ? .semibold : .regular))
                 .foregroundStyle(isActiveDocument ? state.theme.primaryInk : state.theme.primaryInk.opacity(0.88))
                 .lineLimit(1)
 
             Spacer(minLength: 4)
         }
         .padding(.leading, CGFloat(depth) * 14 + 16)
-        .padding(.trailing, 6)
-        .padding(.vertical, 5)
+        .padding(.trailing, 8)
+        .padding(.vertical, 6)
         .background(
-            RoundedRectangle(cornerRadius: 6)
-                .fill(isActiveDocument ? Color.accentColor.opacity(0.14) : Color.clear)
+            RoundedRectangle(cornerRadius: 8)
+                .fill(isActiveDocument ? state.theme.cardBackground : (isHovered ? state.theme.hoverFill : Color.clear))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(isActiveDocument ? state.theme.subtleBorder : Color.clear, lineWidth: 1)
+        )
+        .shadow(
+            color: isActiveDocument ? state.theme.cardShadowColor : .clear,
+            radius: isActiveDocument ? 4 : 0,
+            y: isActiveDocument ? 1.5 : 0
         )
         .contentShape(Rectangle())
         .onTapGesture {
             state.openDocument(at: node.url, inNewTab: false)
+        }
+        .onHover { hovering in
+            withAnimation(.easeOut(duration: 0.12)) {
+                isHovered = hovering
+            }
         }
         .draggable(node.url)
         .contextMenu {
@@ -1040,5 +1104,40 @@ private struct FileTreeNodeRow: View {
 private extension OutlineItem {
     var optionalChildren: [OutlineItem]? {
         children.isEmpty ? nil : children
+    }
+}
+
+private struct SidebarSelectableRow<Content: View>: View {
+    let isSelected: Bool
+    let theme: ReadingTheme
+    let action: () -> Void
+    @ViewBuilder let content: () -> Content
+
+    @State private var isHovered: Bool = false
+
+    var body: some View {
+        Button(action: action) {
+            content()
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(isSelected ? theme.cardBackground : (isHovered ? theme.hoverFill : Color.clear))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(isSelected ? theme.subtleBorder : Color.clear, lineWidth: 1)
+                )
+                .shadow(
+                    color: isSelected ? theme.cardShadowColor : .clear,
+                    radius: isSelected ? 5 : 0,
+                    y: isSelected ? 1.5 : 0
+                )
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering in
+            withAnimation(.easeOut(duration: 0.12)) {
+                isHovered = hovering
+            }
+        }
     }
 }

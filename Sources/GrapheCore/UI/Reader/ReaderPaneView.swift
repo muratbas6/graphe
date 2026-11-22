@@ -156,7 +156,7 @@ public struct ReaderPaneView: View {
                 HStack(spacing: 8) {
                     Image(systemName: "camera.viewfinder")
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(Color.accentColor)
+                        .foregroundStyle(theme.accentColor)
                     Text("Bölge Kırpma (Snapshot) — Kırpmak için PDF üzerinde sürükleyin")
                         .font(.caption.weight(.medium))
                         .foregroundStyle(theme.primaryInk)
@@ -166,11 +166,11 @@ public struct ReaderPaneView: View {
                     .buttonStyle(.bordered)
                     .controlSize(.mini)
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(theme.chromeBackground.opacity(0.96), in: Capsule())
-                .overlay(Capsule().stroke(Color.accentColor.opacity(0.45), lineWidth: 1))
-                .shadow(color: Color.black.opacity(0.14), radius: 8, y: 3)
+                .padding(.horizontal, 13)
+                .padding(.vertical, 7)
+                .background(theme.cardBackground.opacity(0.97), in: Capsule())
+                .overlay(Capsule().stroke(theme.accentColor.opacity(0.45), lineWidth: 1))
+                .shadow(color: theme.cardShadowColor, radius: 10, y: 3)
                 .padding(.top, 10)
             }
 
@@ -191,7 +191,7 @@ public struct ReaderPaneView: View {
         .overlay(alignment: .top) {
             if isSplit && isActive {
                 Rectangle()
-                    .fill(Color.accentColor.opacity(0.6))
+                    .fill(theme.accentColor.opacity(0.7))
                     .frame(height: 2)
             }
         }
@@ -215,11 +215,11 @@ public struct ReaderPaneView: View {
     private var paneHeader: some View {
         HStack(spacing: 8) {
             Circle()
-                .fill(isActive ? Color.accentColor : theme.secondaryInk.opacity(0.35))
+                .fill(isActive ? theme.accentColor : theme.secondaryInk.opacity(0.35))
                 .frame(width: 7, height: 7)
 
             Text(pane.metadata.title)
-                .font(.caption.weight(.medium))
+                .font(.caption.weight(.semibold))
                 .foregroundStyle(theme.primaryInk)
                 .lineLimit(1)
                 .truncationMode(.middle)
@@ -268,10 +268,10 @@ public struct ReaderPaneView: View {
                     .foregroundStyle(theme.primaryInk)
                     .multilineTextAlignment(.center)
                     .frame(width: 44)
-                    .padding(.vertical, 2)
-                    .background(theme.surfaceBackground, in: RoundedRectangle(cornerRadius: 4))
+                    .padding(.vertical, 2.5)
+                    .background(theme.cardBackground, in: RoundedRectangle(cornerRadius: 6))
                     .overlay(
-                        RoundedRectangle(cornerRadius: 4)
+                        RoundedRectangle(cornerRadius: 6)
                             .stroke(theme.subtleBorder, lineWidth: 1)
                     )
                     .focused($isPageFieldFocused)
@@ -307,7 +307,7 @@ public struct ReaderPaneView: View {
                     onToggleBookmark()
                 } label: {
                     Image(systemName: isBookmarked ? "bookmark.fill" : "bookmark")
-                        .foregroundStyle(isBookmarked ? Color.accentColor : theme.secondaryInk)
+                        .foregroundStyle(isBookmarked ? theme.accentColor : theme.secondaryInk)
                 }
                 .buttonStyle(.borderless)
                 .help(isBookmarked ? "Yer İmini Kaldır (⌘D)" : "Bu Sayfaya Yer İmi Ekle (⌘D)")
@@ -328,9 +328,15 @@ public struct ReaderPaneView: View {
                 .help("Uzaklaştır")
 
                 Text("\(Int(round(pane.scaleFactor * 100)))%")
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(theme.secondaryInk)
-                    .frame(width: 40)
+                    .font(.caption2.monospacedDigit().weight(.medium))
+                    .foregroundStyle(theme.primaryInk)
+                    .frame(width: 42)
+                    .padding(.vertical, 2.5)
+                    .background(theme.cardBackground, in: RoundedRectangle(cornerRadius: 6))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(theme.subtleBorder, lineWidth: 1)
+                    )
 
                 Button {
                     onZoom(.zoomIn)

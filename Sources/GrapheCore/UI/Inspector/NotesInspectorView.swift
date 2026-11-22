@@ -88,9 +88,9 @@ public struct NotesInspectorView: View {
                         }
                     }
                 }
-                .padding(12)
+                .padding(14)
             }
-            .background(state.theme.chromeBackground)
+            .background(state.theme.windowBackground)
         }
     }
 
@@ -168,8 +168,13 @@ public struct NotesInspectorView: View {
                         .stroke(state.theme.subtleBorder, lineWidth: 1)
                 )
         }
-        .padding(10)
-        .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+        .padding(12)
+        .background(state.theme.cardBackground, in: RoundedRectangle(cornerRadius: 10))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(state.theme.subtleBorder, lineWidth: 1)
+        )
+        .shadow(color: state.theme.cardShadowColor, radius: state.theme.cardShadowRadius, y: state.theme.cardShadowY)
     }
 
     private var toolbarSection: some View {
@@ -231,11 +236,11 @@ public struct NotesInspectorView: View {
                         .buttonStyle(.plain)
                     }
                 }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 5)
-                .background(state.theme.surfaceBackground.opacity(0.8), in: RoundedRectangle(cornerRadius: 6))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
+                .background(state.theme.cardBackground, in: RoundedRectangle(cornerRadius: 9))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 6)
+                    RoundedRectangle(cornerRadius: 9)
                         .stroke(state.theme.subtleBorder, lineWidth: 1)
                 )
             }
@@ -296,8 +301,13 @@ public struct NotesInspectorView: View {
                 .disabled(newPageNoteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }
-        .padding(10)
-        .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+        .padding(12)
+        .background(state.theme.cardBackground, in: RoundedRectangle(cornerRadius: 10))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(state.theme.subtleBorder, lineWidth: 1)
+        )
+        .shadow(color: state.theme.cardShadowColor, radius: state.theme.cardShadowRadius, y: state.theme.cardShadowY)
     }
 
     private var colorFilterBar: some View {
@@ -307,12 +317,17 @@ public struct NotesInspectorView: View {
                     selectedColorFilter = nil
                 } label: {
                     Text("Tümü (\(state.activeDocumentAnnotations.count))")
-                        .font(.caption2.weight(selectedColorFilter == nil ? .semibold : .regular))
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
+                        .font(.caption2.weight(selectedColorFilter == nil ? .semibold : .medium))
+                        .foregroundStyle(selectedColorFilter == nil ? state.theme.accentColor : state.theme.secondaryInk)
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 4.5)
                         .background(
-                            selectedColorFilter == nil ? Color.accentColor.opacity(0.18) : Color.secondary.opacity(0.08),
+                            selectedColorFilter == nil ? state.theme.accentSoftBackground : state.theme.cardBackground,
                             in: Capsule()
+                        )
+                        .overlay(
+                            Capsule()
+                                .stroke(selectedColorFilter == nil ? state.theme.accentColor.opacity(0.3) : state.theme.subtleBorder, lineWidth: 0.8)
                         )
                 }
                 .buttonStyle(.plain)
@@ -323,18 +338,23 @@ public struct NotesInspectorView: View {
                         Button {
                             selectedColorFilter = selectedColorFilter == color ? nil : color
                         } label: {
-                            HStack(spacing: 4) {
+                            HStack(spacing: 4.5) {
                                 Circle()
                                     .fill(color.swiftUIColor)
                                     .frame(width: 8, height: 8)
                                 Text("\(color.meaningLabel) (\(count))")
-                                    .font(.caption2.weight(selectedColorFilter == color ? .semibold : .regular))
+                                    .font(.caption2.weight(selectedColorFilter == color ? .semibold : .medium))
+                                    .foregroundStyle(selectedColorFilter == color ? state.theme.primaryInk : state.theme.secondaryInk)
                             }
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 4.5)
                             .background(
-                                selectedColorFilter == color ? color.swiftUIColor.opacity(0.22) : Color.secondary.opacity(0.08),
+                                selectedColorFilter == color ? color.swiftUIColor.opacity(0.18) : state.theme.cardBackground,
                                 in: Capsule()
+                            )
+                            .overlay(
+                                Capsule()
+                                    .stroke(selectedColorFilter == color ? color.swiftUIColor.opacity(0.45) : state.theme.subtleBorder, lineWidth: 0.8)
                             )
                         }
                         .buttonStyle(.plain)
@@ -364,10 +384,11 @@ public struct NotesInspectorView: View {
                     state.jumpToPage(item.pageIndex)
                 } label: {
                     Text("s. \(item.pageIndex + 1)")
-                        .font(.caption2.monospacedDigit().weight(.medium))
-                        .padding(.horizontal, 6)
+                        .font(.system(size: 10, weight: .semibold).monospacedDigit())
+                        .foregroundStyle(state.theme.accentColor)
+                        .padding(.horizontal, 6.5)
                         .padding(.vertical, 2)
-                        .background(Color.secondary.opacity(0.12), in: Capsule())
+                        .background(state.theme.accentSoftBackground, in: RoundedRectangle(cornerRadius: 5))
                 }
                 .buttonStyle(.plain)
                 .help("Sayfa \(item.pageIndex + 1)'e git")
@@ -418,17 +439,11 @@ public struct NotesInspectorView: View {
             }
 
             if !item.quote.isEmpty {
-                Text(item.quote)
-                    .font(.caption)
+                Text("“\(item.quote)”")
+                    .font(.system(size: 12))
+                    .lineSpacing(3)
                     .foregroundStyle(state.theme.primaryInk)
                     .textSelection(.enabled)
-                    .padding(.leading, 8)
-                    .overlay(alignment: .leading) {
-                        Rectangle()
-                            .fill(item.color.swiftUIColor)
-                            .frame(width: 3)
-                            .clipShape(Capsule())
-                    }
                     .onTapGesture {
                         state.jumpToPage(item.pageIndex)
                     }
@@ -499,34 +514,44 @@ public struct NotesInspectorView: View {
             } else {
                 if !item.note.isEmpty {
                     Text(item.note)
-                        .font(.caption)
-                        .foregroundStyle(.primary)
+                        .font(.system(size: 12))
+                        .lineSpacing(2.5)
+                        .foregroundStyle(state.theme.primaryInk.opacity(0.9))
                         .textSelection(.enabled)
                         .padding(.top, 2)
                 }
 
                 if !item.tags.isEmpty {
                     ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 4) {
+                        HStack(spacing: 5) {
                             ForEach(item.tags, id: \.self) { tag in
                                 Text("#\(tag)")
                                     .font(.caption2)
                                     .foregroundStyle(state.theme.secondaryInk)
-                                    .padding(.horizontal, 6)
+                                    .padding(.horizontal, 7)
                                     .padding(.vertical, 2)
-                                    .background(Color.secondary.opacity(0.1), in: Capsule())
+                                    .background(state.theme.windowBackground, in: Capsule())
                             }
                         }
                     }
                 }
             }
         }
-        .padding(10)
-        .background(state.theme.surfaceBackground.opacity(0.75), in: RoundedRectangle(cornerRadius: 8))
+        .padding(.leading, 14)
+        .padding(.trailing, 12)
+        .padding(.vertical, 11)
+        .background(state.theme.cardBackground, in: RoundedRectangle(cornerRadius: 10))
+        .overlay(alignment: .leading) {
+            Rectangle()
+                .fill(item.color.swiftUIColor)
+                .frame(width: 3.5)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 10))
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: 10)
                 .stroke(state.theme.subtleBorder, lineWidth: 1)
         )
+        .shadow(color: state.theme.cardShadowColor, radius: state.theme.cardShadowRadius, y: state.theme.cardShadowY)
     }
 
     private func saveQuickHighlight() {

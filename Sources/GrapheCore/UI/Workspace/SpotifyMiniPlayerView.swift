@@ -17,24 +17,20 @@ public struct SpotifySidebarCardView: View {
 
     public var body: some View {
         VStack(spacing: 0) {
-            Rectangle()
-                .fill(theme.subtleBorder)
-                .frame(height: 1)
-
             if spotify.isRunning {
-                VStack(spacing: 7) {
-                    // Top row: 38x38 artwork + Track/Artist + Inline Volume + Popover trigger
-                    HStack(spacing: 8) {
-                        SpotifyArtworkThumbnail(urlString: spotify.artworkURL, size: 38, theme: theme)
+                VStack(spacing: 8) {
+                    // Top row: 36x36 artwork + Track/Artist + Popover trigger
+                    HStack(spacing: 9) {
+                        SpotifyArtworkThumbnail(urlString: spotify.artworkURL, size: 36, theme: theme)
 
-                        VStack(alignment: .leading, spacing: 1) {
+                        VStack(alignment: .leading, spacing: 1.5) {
                             Text(spotify.trackName.isEmpty ? "Spotify Hazır" : spotify.trackName)
-                                .font(.caption.weight(.semibold))
+                                .font(.system(size: 11.5, weight: .semibold))
                                 .foregroundStyle(theme.primaryInk)
                                 .lineLimit(1)
 
                             Text(spotify.artistName.isEmpty ? "Çalan parça yok" : spotify.artistName)
-                                .font(.caption2)
+                                .font(.system(size: 10.5))
                                 .foregroundStyle(theme.secondaryInk)
                                 .lineLimit(1)
                         }
@@ -45,11 +41,11 @@ public struct SpotifySidebarCardView: View {
                         } label: {
                             Image(systemName: "music.note.list")
                                 .font(.caption.weight(.semibold))
-                                .foregroundStyle(showPopover ? Color.accentColor : theme.secondaryInk)
+                                .foregroundStyle(showPopover ? theme.accentColor : theme.secondaryInk)
                                 .frame(width: 24, height: 24)
                                 .background(
-                                    RoundedRectangle(cornerRadius: 6)
-                                        .fill(showPopover ? Color.accentColor.opacity(0.14) : Color.clear)
+                                    RoundedRectangle(cornerRadius: 7)
+                                        .fill(showPopover ? theme.accentSoftBackground : Color.clear)
                                 )
                                 .contentShape(Rectangle())
                         }
@@ -62,15 +58,15 @@ public struct SpotifySidebarCardView: View {
 
                     // Slim interactive progress bar
                     if spotify.durationSeconds > 0 {
-                        VStack(spacing: 2) {
+                        VStack(spacing: 2.5) {
                             GeometryReader { geo in
                                 let fraction = max(0, min(1, spotify.positionSeconds / max(1, spotify.durationSeconds)))
                                 ZStack(alignment: .leading) {
                                     Capsule()
-                                        .fill(theme.subtleBorder.opacity(0.9))
+                                        .fill(theme.subtleBorder)
                                         .frame(height: 3.5)
                                     Capsule()
-                                        .fill(Color.accentColor.opacity(0.85))
+                                        .fill(theme.accentColor)
                                         .frame(width: max(3, geo.size.width * fraction), height: 3.5)
                                 }
                                 .frame(maxHeight: .infinity)
@@ -97,7 +93,7 @@ public struct SpotifySidebarCardView: View {
                                 Text(Self.formatTime(spotify.durationSeconds))
                             }
                             .font(.system(size: 9).monospacedDigit())
-                            .foregroundStyle(theme.secondaryInk.opacity(0.75))
+                            .foregroundStyle(theme.secondaryInk.opacity(0.8))
                         }
                     }
 
@@ -109,7 +105,7 @@ public struct SpotifySidebarCardView: View {
                             } label: {
                                 Image(systemName: "backward.fill")
                                     .font(.system(size: 11))
-                                    .foregroundStyle(theme.primaryInk.opacity(0.85))
+                                    .foregroundStyle(theme.primaryInk.opacity(0.82))
                                     .frame(width: 22, height: 22)
                                     .contentShape(Rectangle())
                             }
@@ -131,7 +127,7 @@ public struct SpotifySidebarCardView: View {
                             } label: {
                                 Image(systemName: "forward.fill")
                                     .font(.system(size: 11))
-                                    .foregroundStyle(theme.primaryInk.opacity(0.85))
+                                    .foregroundStyle(theme.primaryInk.opacity(0.82))
                                     .frame(width: 22, height: 22)
                                     .contentShape(Rectangle())
                             }
@@ -163,7 +159,7 @@ public struct SpotifySidebarCardView: View {
                                 let ratio = max(0, min(1, spotify.volume / 100.0))
                                 ZStack(alignment: .leading) {
                                     Capsule()
-                                        .fill(theme.subtleBorder.opacity(0.95))
+                                        .fill(theme.subtleBorder)
                                         .frame(height: 3.5)
                                     Capsule()
                                         .fill(theme.secondaryInk.opacity(0.85))
@@ -179,27 +175,40 @@ public struct SpotifySidebarCardView: View {
                                         }
                                 )
                             }
-                            .frame(width: 56, height: 16)
+                            .frame(width: 54, height: 16)
                             .help("Ses: %\(Int(round(spotify.volume)))")
                         }
                     }
                 }
+                .padding(.horizontal, 11)
+                .padding(.vertical, 10)
+                .background(theme.cardBackground, in: RoundedRectangle(cornerRadius: 11))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 11)
+                        .stroke(theme.subtleBorder, lineWidth: 1)
+                )
+                .shadow(color: theme.cardShadowColor, radius: theme.cardShadowRadius, y: theme.cardShadowY)
                 .padding(.horizontal, 10)
-                .padding(.vertical, 9)
-                .background(theme.chromeBackground)
+                .padding(.top, 6)
+                .padding(.bottom, 10)
             } else {
-                // Ultra-clean slim bar when Spotify is closed
+                // Warm floating paper card when Spotify is closed
                 HStack(spacing: 8) {
                     Button {
                         spotify.openSpotify()
                     } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: "music.note")
-                                .font(.caption)
-                                .foregroundStyle(theme.secondaryInk)
+                        HStack(spacing: 8) {
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 6)
+                                    .fill(theme.accentSoftBackground)
+                                    .frame(width: 26, height: 26)
+                                Image(systemName: "music.note")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(theme.accentColor)
+                            }
                             Text("Spotify'ı Başlat")
-                                .font(.caption.weight(.medium))
-                                .foregroundStyle(theme.secondaryInk)
+                                .font(.system(size: 11.5, weight: .medium))
+                                .foregroundStyle(theme.primaryInk)
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .contentShape(Rectangle())
@@ -211,8 +220,12 @@ public struct SpotifySidebarCardView: View {
                     } label: {
                         Image(systemName: "music.note.list")
                             .font(.caption)
-                            .foregroundStyle(showPopover ? Color.accentColor : theme.secondaryInk)
-                            .frame(width: 24, height: 22)
+                            .foregroundStyle(showPopover ? theme.accentColor : theme.secondaryInk)
+                            .frame(width: 24, height: 24)
+                            .background(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .fill(showPopover ? theme.accentSoftBackground : Color.clear)
+                            )
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
@@ -223,9 +236,18 @@ public struct SpotifySidebarCardView: View {
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 8)
-                .background(theme.chromeBackground)
+                .background(theme.cardBackground, in: RoundedRectangle(cornerRadius: 11))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 11)
+                        .stroke(theme.subtleBorder, lineWidth: 1)
+                )
+                .shadow(color: theme.cardShadowColor, radius: theme.cardShadowRadius, y: theme.cardShadowY)
+                .padding(.horizontal, 10)
+                .padding(.top, 6)
+                .padding(.bottom, 10)
             }
         }
+        .background(theme.chromeBackground)
         .onAppear {
             spotify.startObserving()
         }
@@ -258,7 +280,7 @@ public struct SpotifyToolbarButtonView: View {
             showPopover.toggle()
         } label: {
             Image(systemName: spotify.isPlaying ? "waveform" : "music.note")
-                .foregroundStyle(spotify.isPlaying ? Color.accentColor : theme.secondaryInk)
+                .foregroundStyle(spotify.isPlaying ? theme.accentColor : theme.secondaryInk)
                 .symbolEffect(.variableColor.iterative, isActive: spotify.isPlaying)
         }
         .help(spotify.trackName.isEmpty ? "Spotify" : "\(spotify.trackName) — \(spotify.artistName)")
@@ -294,7 +316,7 @@ private struct SpotifyPopoverView: View {
             HStack(spacing: 8) {
                 Image(systemName: "music.note.list")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(Color.accentColor)
+                    .foregroundStyle(theme.accentColor)
                 Text("Spotify")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(theme.primaryInk)
@@ -307,7 +329,7 @@ private struct SpotifyPopoverView: View {
                     } label: {
                         Image(systemName: "shuffle")
                             .font(.caption2.weight(.medium))
-                            .foregroundStyle(spotify.isShuffling ? Color.accentColor : theme.secondaryInk)
+                            .foregroundStyle(spotify.isShuffling ? theme.accentColor : theme.secondaryInk)
                     }
                     .buttonStyle(.borderless)
                     .help(spotify.isShuffling ? "Karıştırma Açık" : "Karıştır")
@@ -317,7 +339,7 @@ private struct SpotifyPopoverView: View {
                     } label: {
                         Image(systemName: "repeat")
                             .font(.caption2.weight(.medium))
-                            .foregroundStyle(spotify.isRepeating ? Color.accentColor : theme.secondaryInk)
+                            .foregroundStyle(spotify.isRepeating ? theme.accentColor : theme.secondaryInk)
                     }
                     .buttonStyle(.borderless)
                     .help(spotify.isRepeating ? "Tekrarlama Açık" : "Tekrarla")
@@ -339,7 +361,7 @@ private struct SpotifyPopoverView: View {
                     } label: {
                         Image(systemName: "gearshape")
                             .font(.caption2)
-                            .foregroundStyle(showSettings ? Color.accentColor : theme.secondaryInk)
+                            .foregroundStyle(showSettings ? theme.accentColor : theme.secondaryInk)
                     }
                     .buttonStyle(.borderless)
                     .help("Spotify Bağlantı Ayarları")
@@ -861,19 +883,19 @@ private struct SpotifyArtworkThumbnail: View {
             }
         }
         .frame(width: size, height: size)
-        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .clipShape(RoundedRectangle(cornerRadius: 7))
         .overlay(
-            RoundedRectangle(cornerRadius: 6)
-                .stroke(theme.subtleBorder.opacity(0.7), lineWidth: 0.6)
+            RoundedRectangle(cornerRadius: 7)
+                .stroke(theme.subtleBorder.opacity(0.75), lineWidth: 0.7)
         )
     }
 
     private var placeholder: some View {
         ZStack {
-            theme.chromeBackground
+            theme.accentSoftBackground
             Image(systemName: "music.note")
-                .font(.system(size: max(10, size * 0.4)))
-                .foregroundStyle(theme.secondaryInk.opacity(0.65))
+                .font(.system(size: max(10, size * 0.42), weight: .semibold))
+                .foregroundStyle(theme.accentColor)
         }
     }
 }
