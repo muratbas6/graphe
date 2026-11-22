@@ -77,6 +77,9 @@ public enum SpotifyAPIError: LocalizedError, Sendable {
             if code == 401 {
                 return "Spotify oturumunuzun süresi doldu. Lütfen tekrar bağlanın."
             }
+            if code == 403 {
+                return "Spotify API kısıtlaması: Başka kullanıcıların veya Spotify'ın oluşturduğu playlistlerin şarkı listesi okunamıyor. Sağ üstteki Çal butonuyla doğrudan dinleyebilirsiniz."
+            }
             return "Spotify API hatası (\(code)): \(detail)"
         }
     }
@@ -229,27 +232,58 @@ public final class SpotifyWebAPIService {
     // MARK: - Web API Endpoints
 
     public func fetchCurrentUserPlaylists(limit: Int = 50) async throws -> [SpotifyPlaylist] {
-        let json = try await authorizedGetJSON(path: "/v1/me/playlists", query: [
-            URLQueryItem(name: "limit", value: "\(min(50, max(1, limit)))")
+        let pageSize = min(50, max(1, limit))
+        var allPlaylists: [SpotifyPlaylist] = []
+        var nextURL: URL? = buildAPIURL(path: "/v1/me/playlists", query: [
+            URLQueryItem(name: "limit", value: "\(pageSize)")
         ])
-        guard let items = json["items"] as? [[String: Any]] else { return [] }
-        return items.compactMap(Self.parsePlaylist)
+        var pageCount = 0
+
+        while let url = nextURL, pageCount < 20 {
+            pageCount += 1
+            let json = try await authorizedGetJSON(url: url)
+            if let items = json["items"] as? [[String: Any]] {
+                allPlaylists.append(contentsOf: items.compactMap(Self.parsePlaylist))
+            }
+            if let nextString = json["next"] as? String, !nextString.isEmpty {
+                nextURL = URL(string: nextString)
+            } else {
+                nextURL = nil
+            }
+        }
+        return allPlaylists
     }
 
     public func fetchPlaylistTracks(playlistID: String, limit: Int = 50) async throws -> [SpotifyTrackItem] {
         let encodedID = playlistID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? playlistID
+        let pageSize = min(50, max(1, limit))
         // Spotify February 2026 Web API replaced `/playlists/{id}/tracks` with `/playlists/{id}/items`
-        let json = try await authorizedGetJSON(path: "/v1/playlists/\(encodedID)/items", query: [
-            URLQueryItem(name: "limit", value: "\(min(50, max(1, limit)))"),
+        var allTracks: [SpotifyTrackItem] = []
+        var nextURL: URL? = buildAPIURL(path: "/v1/playlists/\(encodedID)/items", query: [
+            URLQueryItem(name: "limit", value: "\(pageSize)"),
             URLQueryItem(name: "additional_types", value: "track")
         ])
-        guard let items = json["items"] as? [[String: Any]] else { return [] }
-        return items.compactMap { entry in
-            guard let trackObj = (entry["item"] as? [String: Any]) ?? (entry["track"] as? [String: Any]) else {
-                return nil
+        var pageCount = 0
+
+        while let url = nextURL, pageCount < 40 {
+            pageCount += 1
+            let json = try await authorizedGetJSON(url: url)
+            if let items = json["items"] as? [[String: Any]] {
+                let pageTracks: [SpotifyTrackItem] = items.compactMap { entry in
+                    guard let trackObj = (entry["item"] as? [String: Any]) ?? (entry["track"] as? [String: Any]) else {
+                        return nil
+                    }
+                    return Self.parseTrack(trackObj)
+                }
+                allTracks.append(contentsOf: pageTracks)
             }
-            return Self.parseTrack(trackObj)
+            if let nextString = json["next"] as? String, !nextString.isEmpty {
+                nextURL = URL(string: nextString)
+            } else {
+                nextURL = nil
+            }
         }
+        return allTracks
     }
 
     public func search(query: String, limit: Int = 10) async throws -> SpotifySearchResults {
@@ -280,10 +314,10 @@ public final class SpotifyWebAPIService {
     }
 
     /// Starts playback silently via Web API so the macOS Spotify window never steals focus.
+    /// Automatically resolves the Mac computer device ID if Spotify reports 404 (no active device).
     /// Returns `true` if Spotify accepted the command; returns `false` if unavailable (e.g. Free account or missing scope) so caller can fall back to AppleScript.
     public func startPlayback(uri: String, contextURI: String? = nil) async -> Bool {
         guard let token = try? await ensureValidAccessToken() else { return false }
-        guard let url = URL(string: "https://api.spotify.com/v1/me/player/play") else { return false }
 
         var payload: [String: Any] = [:]
         if let ctx = contextURI, !ctx.isEmpty {
@@ -294,8 +328,25 @@ public final class SpotifyWebAPIService {
         } else {
             payload["uris"] = [uri]
         }
-
         guard let body = try? JSONSerialization.data(withJSONObject: payload) else { return false }
+
+        let status = await sendPlayRequest(token: token, body: body, deviceID: nil)
+        if status >= 200 && status < 300 {
+            return true
+        }
+
+        // If no active Spotify Connect device is selected yet (404), pick the Mac Computer device and retry once
+        if status == 404, let deviceID = await fetchPreferredDeviceID() {
+            let retryStatus = await sendPlayRequest(token: token, body: body, deviceID: deviceID)
+            return retryStatus >= 200 && retryStatus < 300
+        }
+
+        return false
+    }
+
+    private func sendPlayRequest(token: String, body: Data, deviceID: String?) async -> Int {
+        let query: [URLQueryItem] = deviceID.map { [URLQueryItem(name: "device_id", value: $0)] } ?? []
+        guard let url = buildAPIURL(path: "/v1/me/player/play", query: query) else { return 0 }
         var req = URLRequest(url: url)
         req.httpMethod = "PUT"
         req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
@@ -304,23 +355,45 @@ public final class SpotifyWebAPIService {
 
         do {
             let (_, response) = try await URLSession.shared.data(for: req)
-            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-            return status >= 200 && status < 300
+            return (response as? HTTPURLResponse)?.statusCode ?? 0
         } catch {
-            return false
+            return 0
         }
     }
 
-    private func authorizedGetJSON(path: String, query: [URLQueryItem]) async throws -> [String: Any] {
-        let token = try await ensureValidAccessToken()
-        var components = URLComponents(string: "https://api.spotify.com\(path)")!
-        if !query.isEmpty {
-            components.queryItems = query
+    private func fetchPreferredDeviceID() async -> String? {
+        guard let json = try? await authorizedGetJSON(path: "/v1/me/player/devices", query: []),
+              let devices = json["devices"] as? [[String: Any]] else {
+            return nil
         }
-        guard let url = components.url else {
+        // Prefer active device, then any Computer device, then first available non-restricted device
+        let usable = devices.filter { ($0["is_restricted"] as? Bool) != true && ($0["id"] as? String) != nil }
+        if let active = usable.first(where: { ($0["is_active"] as? Bool) == true }), let id = active["id"] as? String {
+            return id
+        }
+        if let computer = usable.first(where: { ($0["type"] as? String)?.lowercased() == "computer" }), let id = computer["id"] as? String {
+            return id
+        }
+        return usable.first?["id"] as? String
+    }
+
+    private func buildAPIURL(path: String, query: [URLQueryItem]) -> URL? {
+        var components = URLComponents(string: "https://api.spotify.com\(path)")
+        if !query.isEmpty {
+            components?.queryItems = query
+        }
+        return components?.url
+    }
+
+    private func authorizedGetJSON(path: String, query: [URLQueryItem]) async throws -> [String: Any] {
+        guard let url = buildAPIURL(path: path, query: query) else {
             throw SpotifyAPIError.httpError(0, "Geçersiz URL")
         }
+        return try await authorizedGetJSON(url: url)
+    }
 
+    private func authorizedGetJSON(url: URL) async throws -> [String: Any] {
+        let token = try await ensureValidAccessToken()
         var req = URLRequest(url: url)
         req.httpMethod = "GET"
         req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")

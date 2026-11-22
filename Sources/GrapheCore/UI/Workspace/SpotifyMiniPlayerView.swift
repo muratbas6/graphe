@@ -470,7 +470,7 @@ private struct SpotifyPopoverView: View {
                     } else {
                         ScrollView {
                             LazyVStack(spacing: 2) {
-                                ForEach(spotify.selectedPlaylistTracks) { track in
+                                ForEach(Array(spotify.selectedPlaylistTracks.enumerated()), id: \.offset) { _, track in
                                     Button {
                                         spotify.playURI(track.uri, inContext: playlist.uri)
                                     } label: {
