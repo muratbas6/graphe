@@ -19,6 +19,8 @@ public struct OneNoteWorkspaceView: View {
     @State private var userInstalledFonts: [String] = []
     @State private var curatedFonts: [String] = NotebookFontCatalog.curatedBaseFamilies
     @State private var otherSystemFonts: [String] = []
+    @State private var showDefaultFontPopover: Bool = false
+    @State private var showSelectionFontPopover: Bool = false
     @FocusState private var isPageTitleFocused: Bool
 
     private static let turkishDateFormatter: DateFormatter = {
@@ -351,72 +353,44 @@ public struct OneNoteWorkspaceView: View {
             Spacer(minLength: 4)
 
             if state.notesSubTab == .notebook {
-                // Default Notebook Font Picker (User-downloaded fonts + 6 curated + Other system fonts)
-                Menu {
-                    if !userInstalledFonts.isEmpty {
-                        Section("İndirdiklerim") {
-                            ForEach(userInstalledFonts, id: \.self) { fam in
-                                Button {
-                                    state.setNotebookFontFamily(fam)
-                                } label: {
-                                    HStack {
-                                        Text(fam)
-                                        if state.notebookFontFamily == fam {
-                                            Image(systemName: "checkmark")
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    Section("Temel Fontlar") {
-                        ForEach(curatedFonts, id: \.self) { fam in
-                            Button {
-                                state.setNotebookFontFamily(fam)
-                            } label: {
-                                HStack {
-                                    Text(NotebookFontCatalog.displayName(for: fam))
-                                    if state.notebookFontFamily == fam {
-                                        Image(systemName: "checkmark")
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    if !otherSystemFonts.isEmpty {
-                        Menu("Diğer Sistem Fontları") {
-                            ForEach(otherSystemFonts, id: \.self) { fam in
-                                Button {
-                                    state.setNotebookFontFamily(fam)
-                                } label: {
-                                    HStack {
-                                        Text(fam)
-                                        if state.notebookFontFamily == fam {
-                                            Image(systemName: "checkmark")
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
+                // Default Notebook Font Picker with live font previews
+                Button {
+                    showDefaultFontPopover.toggle()
                 } label: {
-                    HStack(spacing: 3) {
+                    HStack(spacing: 4) {
                         Text("Aa")
                             .font(.caption.weight(.semibold))
                         if state.notebookFontFamily != NotebookFontCatalog.systemKey {
                             Text(state.notebookFontFamily)
-                                .font(.caption2)
+                                .font(NotebookFontCatalog.swiftUIFont(family: state.notebookFontFamily, size: 11.5))
                                 .lineLimit(1)
-                                .frame(maxWidth: 84, alignment: .leading)
+                                .frame(maxWidth: 96, alignment: .leading)
                         }
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 8, weight: .semibold))
+                            .opacity(0.65)
                     }
                     .foregroundStyle(state.theme.secondaryInk)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 2)
+                    .contentShape(Rectangle())
                 }
-                .menuStyle(.borderlessButton)
+                .buttonStyle(.plain)
                 .fixedSize()
                 .help("Defter Yazı Tipi (OneNote + LaTeX PDF)")
+                .popover(isPresented: $showDefaultFontPopover, arrowEdge: .bottom) {
+                    NotebookFontPickerPopover(
+                        title: "Defter Yazı Tipi",
+                        selectedFamily: state.notebookFontFamily,
+                        userInstalledFonts: userInstalledFonts,
+                        curatedFonts: curatedFonts,
+                        otherSystemFonts: otherSystemFonts,
+                        theme: state.theme
+                    ) { fam in
+                        state.setNotebookFontFamily(fam)
+                        showDefaultFontPopover = false
+                    }
+                }
 
                 if let activePage = state.activeNotebookPage {
                     Menu {
@@ -680,34 +654,37 @@ public struct OneNoteWorkspaceView: View {
                 formatBtn("H3", .heading3)
                 formatBtn("T", .body)
 
-                Menu {
-                    if !userInstalledFonts.isEmpty {
-                        Section("İndirdiklerim") {
-                            ForEach(userInstalledFonts, id: \.self) { fam in
-                                Button(fam) { sendFormat(.fontFamily(fam)) }
-                            }
-                        }
-                    }
-                    Section("Temel Fontlar") {
-                        ForEach(curatedFonts, id: \.self) { fam in
-                            Button(NotebookFontCatalog.displayName(for: fam)) { sendFormat(.fontFamily(fam)) }
-                        }
-                    }
-                    if !otherSystemFonts.isEmpty {
-                        Menu("Diğer Sistem Fontları") {
-                            ForEach(otherSystemFonts, id: \.self) { fam in
-                                Button(fam) { sendFormat(.fontFamily(fam)) }
-                            }
-                        }
-                    }
+                Button {
+                    showSelectionFontPopover.toggle()
                 } label: {
-                    Text("Aa")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(state.theme.primaryInk)
+                    HStack(spacing: 2) {
+                        Text("Aa")
+                            .font(.caption2.weight(.semibold))
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 7, weight: .semibold))
+                            .opacity(0.65)
+                    }
+                    .foregroundStyle(state.theme.primaryInk)
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 2)
+                    .contentShape(Rectangle())
                 }
-                .menuStyle(.borderlessButton)
+                .buttonStyle(.plain)
                 .fixedSize()
                 .help("Seçili Metnin Yazı Tipini Değiştir")
+                .popover(isPresented: $showSelectionFontPopover, arrowEdge: .bottom) {
+                    NotebookFontPickerPopover(
+                        title: "Seçili Metin Fontu",
+                        selectedFamily: nil,
+                        userInstalledFonts: userInstalledFonts,
+                        curatedFonts: curatedFonts,
+                        otherSystemFonts: otherSystemFonts,
+                        theme: state.theme
+                    ) { fam in
+                        sendFormat(.fontFamily(fam))
+                        showSelectionFontPopover = false
+                    }
+                }
 
                 Rectangle()
                     .fill(state.theme.subtleBorder)
@@ -1505,5 +1482,172 @@ private final class NotebookImageCache {
         guard let loaded = NSImage(contentsOfFile: path) else { return nil }
         cache.setObject(loaded, forKey: key)
         return loaded
+    }
+}
+
+private struct NotebookFontPickerPopover: View {
+    let title: String
+    let selectedFamily: String?
+    let userInstalledFonts: [String]
+    let curatedFonts: [String]
+    let otherSystemFonts: [String]
+    let theme: ReadingTheme
+    let onSelect: (String) -> Void
+
+    @State private var showOtherSystemFonts: Bool = false
+    @State private var searchQuery: String = ""
+    @State private var hoveredFamily: String?
+
+    private var filteredOtherFonts: [String] {
+        let trimmed = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return otherSystemFonts }
+        return otherSystemFonts.filter { $0.localizedCaseInsensitiveContains(trimmed) }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(theme.secondaryInk)
+                Spacer()
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+
+            Divider()
+
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 2) {
+                    if !userInstalledFonts.isEmpty {
+                        sectionHeader("İndirdiklerim")
+                        ForEach(userInstalledFonts, id: \.self) { fam in
+                            fontRow(family: fam, label: fam)
+                        }
+                        Divider()
+                            .padding(.vertical, 4)
+                    }
+
+                    sectionHeader("Temel Fontlar")
+                    ForEach(curatedFonts, id: \.self) { fam in
+                        fontRow(family: fam, label: NotebookFontCatalog.displayName(for: fam))
+                    }
+
+                    if !otherSystemFonts.isEmpty {
+                        Divider()
+                            .padding(.vertical, 4)
+
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.16)) {
+                                showOtherSystemFonts.toggle()
+                            }
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: showOtherSystemFonts ? "chevron.down" : "chevron.right")
+                                    .font(.system(size: 9, weight: .semibold))
+                                    .foregroundStyle(theme.secondaryInk)
+                                    .frame(width: 10)
+                                Text("Diğer Sistem Fontları (\(otherSystemFonts.count))")
+                                    .font(.caption.weight(.medium))
+                                    .foregroundStyle(theme.secondaryInk)
+                                Spacer()
+                            }
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+
+                        if showOtherSystemFonts {
+                            HStack(spacing: 6) {
+                                Image(systemName: "magnifyingglass")
+                                    .font(.caption2)
+                                    .foregroundStyle(theme.secondaryInk)
+                                TextField("Font ara...", text: $searchQuery)
+                                    .textFieldStyle(.plain)
+                                    .font(.caption)
+                                    .foregroundStyle(theme.primaryInk)
+                                if !searchQuery.isEmpty {
+                                    Button {
+                                        searchQuery = ""
+                                    } label: {
+                                        Image(systemName: "xmark.circle.fill")
+                                            .font(.caption2)
+                                            .foregroundStyle(theme.secondaryInk)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 5)
+                            .background(theme.surfaceBackground, in: RoundedRectangle(cornerRadius: 6))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .stroke(theme.subtleBorder, lineWidth: 1)
+                            )
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+
+                            ForEach(filteredOtherFonts, id: \.self) { fam in
+                                fontRow(family: fam, label: fam)
+                            }
+                        }
+                    }
+                }
+                .padding(.vertical, 6)
+            }
+            .frame(maxHeight: showOtherSystemFonts ? 380 : 280)
+        }
+        .frame(width: 248)
+        .background(theme.chromeBackground)
+        .preferredColorScheme(theme.preferredColorScheme)
+    }
+
+    private func sectionHeader(_ text: String) -> some View {
+        Text(text.uppercased())
+            .font(.system(size: 10, weight: .semibold))
+            .foregroundStyle(theme.secondaryInk.opacity(0.8))
+            .padding(.horizontal, 10)
+            .padding(.top, 4)
+            .padding(.bottom, 2)
+    }
+
+    private func fontRow(family: String, label: String) -> some View {
+        let isSelected = (selectedFamily == family)
+        let isHovered = (hoveredFamily == family)
+
+        return Button {
+            onSelect(family)
+        } label: {
+            HStack(spacing: 8) {
+                Text(label)
+                    .font(NotebookFontCatalog.swiftUIFont(family: family, size: 13.5))
+                    .foregroundStyle(theme.primaryInk)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Spacer(minLength: 4)
+                if isSelected {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Color.accentColor)
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(
+                RoundedRectangle(cornerRadius: 5)
+                    .fill(
+                        isSelected
+                            ? Color.accentColor.opacity(0.14)
+                            : (isHovered ? theme.primaryInk.opacity(0.07) : Color.clear)
+                    )
+            )
+            .padding(.horizontal, 4)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering in
+            hoveredFamily = hovering ? family : (hoveredFamily == family ? nil : hoveredFamily)
+        }
     }
 }
