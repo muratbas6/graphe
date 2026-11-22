@@ -8,6 +8,7 @@ public struct ReaderPaneView: View {
     public let isSplit: Bool
     public let isBookmarked: Bool
     public let theme: ReadingTheme
+    public let isSyncScrollEnabled: Bool
     public let syncScrollSignal: SyncScrollSignal?
     public let footnoteResolver: FootnoteResolver
     public let annotations: [AnnotationItem]
@@ -49,6 +50,7 @@ public struct ReaderPaneView: View {
         isSplit: Bool,
         isBookmarked: Bool = false,
         theme: ReadingTheme,
+        isSyncScrollEnabled: Bool = false,
         syncScrollSignal: SyncScrollSignal?,
         footnoteResolver: FootnoteResolver = FootnoteResolver(),
         annotations: [AnnotationItem] = [],
@@ -84,6 +86,7 @@ public struct ReaderPaneView: View {
         self.isSplit = isSplit
         self.isBookmarked = isBookmarked
         self.theme = theme
+        self.isSyncScrollEnabled = isSyncScrollEnabled
         self.syncScrollSignal = syncScrollSignal
         self.footnoteResolver = footnoteResolver
         self.annotations = annotations
@@ -124,6 +127,7 @@ public struct ReaderPaneView: View {
                 pane: pane,
                 side: side,
                 theme: theme,
+                isSyncScrollEnabled: isSyncScrollEnabled,
                 syncScrollSignal: syncScrollSignal,
                 footnoteResolver: footnoteResolver,
                 annotations: annotations,

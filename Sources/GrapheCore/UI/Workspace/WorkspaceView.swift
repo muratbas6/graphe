@@ -226,6 +226,9 @@ public struct WorkspaceView: View {
         .sheet(item: $state.editingMetadataDocument) { doc in
             MetadataEditorSheet(document: doc, state: state)
         }
+        .sheet(item: $state.movingPDFRequest) { req in
+            MoveToFolderSheet(sourceURL: req.url, state: state)
+        }
         .background {
             // ⌘1–⌘9 tab switching shortcuts
             Group {
@@ -576,6 +579,13 @@ public struct WorkspaceView: View {
                         onClose: { state.closeTab(id: tab.id) }
                     )
                     .contextMenu {
+                        Button("Klasöre Taşı...") {
+                            state.presentMoveToFolder(url: tab.activePane.url)
+                        }
+                        Button("Finder'da Göster") {
+                            state.revealInFinder(at: tab.activePane.url)
+                        }
+                        Divider()
                         Button("Sekmeyi Kapat") {
                             state.closeTab(id: tab.id)
                         }
@@ -623,6 +633,7 @@ public struct WorkspaceView: View {
             isSplit: tab.isSplit,
             isBookmarked: state.isPageBookmarked(pane.currentPageIndex, forDocumentHash: pane.documentHash),
             theme: state.theme,
+            isSyncScrollEnabled: tab.isSplit && tab.syncScrollEnabled,
             syncScrollSignal: tab.syncScrollEnabled ? state.syncScrollSignal : nil,
             footnoteResolver: state.footnoteResolver,
             annotations: state.annotations(forDocumentHash: pane.documentHash),

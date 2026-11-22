@@ -119,6 +119,10 @@ public final class GraphePDFContainerView: NSView {
         floatingBarHost = host
     }
 
+    public var hasFloatingSelectionBar: Bool {
+        floatingBarHost != nil
+    }
+
     public func hideFloatingSelectionBar() {
         floatingBarHost?.removeFromSuperview()
         floatingBarHost = nil
@@ -724,6 +728,7 @@ public struct PDFKitRepresentable: NSViewRepresentable {
     public let pane: ReaderPaneState
     public let side: PaneSide
     public let theme: ReadingTheme
+    public let isSyncScrollEnabled: Bool
     public let syncScrollSignal: SyncScrollSignal?
     public let footnoteResolver: FootnoteResolver
     public let annotations: [AnnotationItem]
@@ -750,6 +755,7 @@ public struct PDFKitRepresentable: NSViewRepresentable {
         pane: ReaderPaneState,
         side: PaneSide,
         theme: ReadingTheme,
+        isSyncScrollEnabled: Bool = false,
         syncScrollSignal: SyncScrollSignal?,
         footnoteResolver: FootnoteResolver = FootnoteResolver(),
         annotations: [AnnotationItem] = [],
@@ -775,6 +781,7 @@ public struct PDFKitRepresentable: NSViewRepresentable {
         self.pane = pane
         self.side = side
         self.theme = theme
+        self.isSyncScrollEnabled = isSyncScrollEnabled
         self.syncScrollSignal = syncScrollSignal
         self.footnoteResolver = footnoteResolver
         self.annotations = annotations
@@ -1037,6 +1044,8 @@ public struct PDFKitRepresentable: NSViewRepresentable {
         private weak var observedClipView: NSClipView?
         private var activePopover: NSPopover?
         private var isApplyingExternalScroll = false
+        private var lastBroadcastScrollTime: TimeInterval = 0
+        private var lastBroadcastNormalizedY: Double = -1
         var suppressNextFloatingBar = false
         nonisolated(unsafe) private var selectionDebounceWorkItem: DispatchWorkItem?
         nonisolated(unsafe) private var externalScrollResetWorkItem: DispatchWorkItem?
@@ -1046,10 +1055,11 @@ public struct PDFKitRepresentable: NSViewRepresentable {
 
         func syncHighlights(_ annotations: [AnnotationItem], on pdfView: GraphePDFView) {
             guard let doc = pdfView.document else { return }
-            let highlightItems = annotations.filter { $0.kind == .highlight && !$0.rects.isEmpty }
             var hasher = Hasher()
             hasher.combine(ObjectIdentifier(doc))
-            for item in highlightItems {
+            var highlightCount = 0
+            for item in annotations where item.kind == .highlight && !item.rects.isEmpty {
+                highlightCount += 1
                 hasher.combine(item.id)
                 hasher.combine(item.color)
                 hasher.combine(item.rects)
@@ -1059,6 +1069,10 @@ public struct PDFKitRepresentable: NSViewRepresentable {
                 return
             }
             lastAnnotationsFingerprint = fingerprint
+
+            let highlightItems: [AnnotationItem] = highlightCount == 0
+                ? []
+                : annotations.filter { $0.kind == .highlight && !$0.rects.isEmpty }
 
             let docID = ObjectIdentifier(doc)
             if highlightedDocumentID != docID {
@@ -1147,7 +1161,7 @@ public struct PDFKitRepresentable: NSViewRepresentable {
                 object: pdfView,
                 queue: .main
             ) { [weak self] _ in
-                Task { @MainActor [weak self] in
+                MainActor.assumeIsolated {
                     self?.reportPosition()
                 }
             }
@@ -1157,8 +1171,10 @@ public struct PDFKitRepresentable: NSViewRepresentable {
                 object: pdfView,
                 queue: .main
             ) { [weak self] _ in
-                Task { @MainActor [weak self] in
-                    self?.containerView?.hideFloatingSelectionBar()
+                MainActor.assumeIsolated {
+                    if self?.containerView?.hasFloatingSelectionBar == true {
+                        self?.containerView?.hideFloatingSelectionBar()
+                    }
                     self?.reportPosition()
                 }
             }
@@ -1168,7 +1184,7 @@ public struct PDFKitRepresentable: NSViewRepresentable {
                 object: pdfView,
                 queue: .main
             ) { [weak self] _ in
-                Task { @MainActor [weak self] in
+                MainActor.assumeIsolated {
                     self?.scheduleSelectionCapture()
                 }
             }
@@ -1265,7 +1281,7 @@ public struct PDFKitRepresentable: NSViewRepresentable {
                 object: clipView,
                 queue: .main
             ) { [weak self] _ in
-                Task { @MainActor [weak self] in
+                MainActor.assumeIsolated {
                     self?.handleScrollBoundsChange()
                 }
             }
@@ -1296,13 +1312,25 @@ public struct PDFKitRepresentable: NSViewRepresentable {
         }
 
         private func handleScrollBoundsChange() {
-            containerView?.hideFloatingSelectionBar()
-            guard !isApplyingExternalScroll,
+            if containerView?.hasFloatingSelectionBar == true {
+                containerView?.hideFloatingSelectionBar()
+            }
+            guard parent.isSyncScrollEnabled,
+                  !isApplyingExternalScroll,
                   let scrollView = observedScrollView,
                   let docView = scrollView.documentView else { return }
             let maxY = max(0.0, docView.frame.height - scrollView.contentView.bounds.height)
             guard maxY > 0 else { return }
             let normalized = Double(scrollView.contentView.bounds.origin.y / maxY)
+            let now = CACurrentMediaTime()
+            if now - lastBroadcastScrollTime < 0.016 && abs(normalized - lastBroadcastNormalizedY) < 0.01 {
+                return
+            }
+            if abs(normalized - lastBroadcastNormalizedY) < 0.0005 {
+                return
+            }
+            lastBroadcastScrollTime = now
+            lastBroadcastNormalizedY = normalized
             parent.onScrollNormalized(normalized)
         }
 

@@ -16,9 +16,15 @@ final class GrapheAppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    var onWillTerminate: (() -> Void)?
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        onWillTerminate?()
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {
@@ -43,6 +49,9 @@ struct GrapheApp: App {
                         for url in urls where url.pathExtension.lowercased() == "pdf" {
                             state.openDocument(at: url, inNewTab: true)
                         }
+                    }
+                    appDelegate.onWillTerminate = {
+                        state.flushPendingPersistence()
                     }
                 }
         }
@@ -72,6 +81,12 @@ struct GrapheApp: App {
                     state.splitCurrentDocumentSelf()
                 }
                 .keyboardShortcut("\\", modifiers: [.command, .shift])
+                .disabled(state.activeTab == nil)
+
+                Button("Aktif PDF'i Klasöre Taşı...") {
+                    state.presentMoveToFolder()
+                }
+                .keyboardShortcut("m", modifiers: [.command, .shift])
                 .disabled(state.activeTab == nil)
 
                 Divider()

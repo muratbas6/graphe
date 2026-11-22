@@ -405,6 +405,15 @@ public struct CommandPaletteView: View {
             ) { onTriggerLatexExport() })
 
             cmds.append(CommandPaletteItem(
+                id: "cmd-move-folder",
+                title: "Aktif PDF'i Klasöre Taşı...",
+                subtitle: "Bağlı okuma klasörlerinden veya alt kategorilerden birine taşı",
+                icon: "folder.badge.arrow.up",
+                shortcut: "⇧⌘M",
+                category: "Kitap"
+            ) { state.presentMoveToFolder() })
+
+            cmds.append(CommandPaletteItem(
                 id: "cmd-metadata",
                 title: "Kitap Metadatasını Düzenle & Yeniden Adlandır",
                 subtitle: "Başlık, yazar, yıl, yayınevi, ISBN",

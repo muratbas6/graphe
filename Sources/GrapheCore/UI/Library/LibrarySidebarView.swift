@@ -723,6 +723,9 @@ public struct LibrarySidebarView: View {
                                     tagEditInput = doc.tags.joined(separator: ", ")
                                     editingTagDocument = doc
                                 }
+                                Button("Klasöre Taşı...") {
+                                    state.presentMoveToFolder(url: doc.url)
+                                }
                                 Button("Finder'da Göster") {
                                     state.revealInFinder(at: doc.url)
                                 }
@@ -1078,17 +1081,8 @@ private struct FileTreeNodeRow: View {
             Button("Yeniden Adlandır...") {
                 onRequestRename(node)
             }
-            let moveTargets = state.allFolderDirectories.filter {
-                $0.url.path != node.url.deletingLastPathComponent().path
-            }
-            if !moveTargets.isEmpty {
-                Menu("Klasöre Taşı") {
-                    ForEach(moveTargets) { targetDir in
-                        Button(targetDir.name) {
-                            state.moveFileItem(at: node.url, toFolder: targetDir.url)
-                        }
-                    }
-                }
+            Button("Klasöre Taşı...") {
+                state.presentMoveToFolder(url: node.url)
             }
             Button("Finder'da Göster") {
                 state.revealInFinder(at: node.url)

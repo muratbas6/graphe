@@ -103,6 +103,7 @@ public final class WorkspaceState {
     public var activeDocumentBookmarks: [BookmarkItem] = []
     public var isTwoUpBookMode: Bool = false
     public var editingMetadataDocument: LibraryDocumentRecord? = nil
+    public var movingPDFRequest: MovePDFRequest? = nil
     public var leftPanelTab: LeftPanelTab = .library
     public var libraryViewMode: LibraryViewMode = .folders
     public var watchedFolders: [WatchedRootFolder] = []
@@ -147,6 +148,9 @@ public final class WorkspaceState {
     private var inDocSearchTask: Task<Void, Never>?
     private var globalSearchTask: Task<Void, Never>?
     private var persistSessionTask: Task<Void, Never>?
+    private var footnoteRefreshTask: Task<Void, Never>?
+    private var lastLoadedDocumentMetaHash: String?
+    private let backgroundDocPrepQueue = DispatchQueue(label: "com.graphe.docprep", qos: .utility)
     private var documentHashesByTag: [String: Set<String>] = [:]
     private var folderRefreshGeneration: Int = 0
     private var undoStack: [UndoableAction] = []
@@ -413,8 +417,14 @@ public final class WorkspaceState {
         switch side {
         case .primary:
             let pageChanged = tabs[idx].primaryPane.currentPageIndex != pageIndex
-            tabs[idx].primaryPane.currentPageIndex = pageIndex
-            tabs[idx].primaryPane.scaleFactor = scaleFactor
+            let scaleChanged = abs(tabs[idx].primaryPane.scaleFactor - scaleFactor) > 0.0001
+            guard pageChanged || scaleChanged else { return }
+            if pageChanged {
+                tabs[idx].primaryPane.currentPageIndex = pageIndex
+            }
+            if scaleChanged {
+                tabs[idx].primaryPane.scaleFactor = scaleFactor
+            }
             store.savePosition(
                 ReadingPosition(pageIndex: pageIndex, scaleFactor: scaleFactor),
                 for: tabs[idx].primaryPane.url
@@ -422,12 +432,14 @@ public final class WorkspaceState {
             if pageChanged {
                 schedulePersistSession()
                 if tabs[idx].activeSide == .primary {
-                    refreshCurrentPageFootnotes()
+                    scheduleRefreshCurrentPageFootnotes()
                 }
             }
         case .secondary:
             guard var secondary = tabs[idx].secondaryPane else { return }
             let pageChanged = secondary.currentPageIndex != pageIndex
+            let scaleChanged = abs(secondary.scaleFactor - scaleFactor) > 0.0001
+            guard pageChanged || scaleChanged else { return }
             secondary.currentPageIndex = pageIndex
             secondary.scaleFactor = scaleFactor
             tabs[idx].secondaryPane = secondary
@@ -440,9 +452,18 @@ public final class WorkspaceState {
             if pageChanged {
                 schedulePersistSession()
                 if tabs[idx].activeSide == .secondary {
-                    refreshCurrentPageFootnotes()
+                    scheduleRefreshCurrentPageFootnotes()
                 }
             }
+        }
+    }
+
+    private func scheduleRefreshCurrentPageFootnotes() {
+        footnoteRefreshTask?.cancel()
+        footnoteRefreshTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(120))
+            guard !Task.isCancelled else { return }
+            self?.refreshCurrentPageFootnotes()
         }
     }
 
@@ -508,35 +529,66 @@ public final class WorkspaceState {
     }
 
     public func refreshCurrentPageFootnotes() {
+        footnoteRefreshTask?.cancel()
+        footnoteRefreshTask = nil
         guard let pane = activeTab?.activePane,
               let page = pane.document.page(at: pane.currentPageIndex) else {
             if !currentPageFootnotes.isEmpty {
                 currentPageFootnotes = []
             }
-            currentPageOCRResult = nil
-            activeDocumentOCRCount = 0
-            activeDocumentBookmarks = []
+            if currentPageOCRResult != nil {
+                currentPageOCRResult = nil
+            }
+            if activeDocumentOCRCount != 0 {
+                activeDocumentOCRCount = 0
+            }
+            if !activeDocumentBookmarks.isEmpty {
+                activeDocumentBookmarks = []
+            }
+            lastLoadedDocumentMetaHash = nil
             clearActiveNotebookState()
             return
         }
-        currentPageFootnotes = footnoteResolver.extractPageFootnotes(
+        let newFootnotes = footnoteResolver.extractPageFootnotes(
             from: page,
             pageIndex: pane.currentPageIndex
         )
+        if currentPageFootnotes != newFootnotes {
+            currentPageFootnotes = newFootnotes
+        }
         if !pane.documentHash.isEmpty {
-            currentPageOCRResult = libraryDatabase.fetchOCRPage(
+            let newOCR = libraryDatabase.fetchOCRPage(
                 docHash: pane.documentHash,
                 pageIndex: pane.currentPageIndex
             )
-            activeDocumentOCRCount = libraryDatabase.countOCRPages(docHash: pane.documentHash)
+            if currentPageOCRResult != newOCR {
+                currentPageOCRResult = newOCR
+            }
+            if lastLoadedDocumentMetaHash != pane.documentHash {
+                lastLoadedDocumentMetaHash = pane.documentHash
+                let ocrCount = libraryDatabase.countOCRPages(docHash: pane.documentHash)
+                if activeDocumentOCRCount != ocrCount {
+                    activeDocumentOCRCount = ocrCount
+                }
+                let bookmarks = libraryDatabase.fetchBookmarks(forDocumentHash: pane.documentHash)
+                if activeDocumentBookmarks != bookmarks {
+                    activeDocumentBookmarks = bookmarks
+                }
+            }
             if notebookSections.first?.documentHash != pane.documentHash {
                 loadNotebookForActiveDocument()
             }
-            activeDocumentBookmarks = libraryDatabase.fetchBookmarks(forDocumentHash: pane.documentHash)
         } else {
-            currentPageOCRResult = nil
-            activeDocumentOCRCount = 0
-            activeDocumentBookmarks = []
+            if currentPageOCRResult != nil {
+                currentPageOCRResult = nil
+            }
+            if activeDocumentOCRCount != 0 {
+                activeDocumentOCRCount = 0
+            }
+            if !activeDocumentBookmarks.isEmpty {
+                activeDocumentBookmarks = []
+            }
+            lastLoadedDocumentMetaHash = nil
             clearActiveNotebookState()
         }
     }
@@ -1146,6 +1198,7 @@ public final class WorkspaceState {
             currentPageOCRResult = nil
             activeDocumentOCRCount = 0
             activeDocumentBookmarks = []
+            lastLoadedDocumentMetaHash = nil
             clearActiveNotebookState()
         }
         refreshLibrary()
@@ -1374,6 +1427,7 @@ public final class WorkspaceState {
         undoStack.removeAll()
         redoStack.removeAll()
         activeDocumentBookmarks = []
+        lastLoadedDocumentMetaHash = nil
         editingMetadataDocument = nil
         if let vocab = restored.vocabulary {
             vocabulary = vocab
@@ -1487,12 +1541,47 @@ public final class WorkspaceState {
     }
 
     public func createSubfolder(named name: String, inside parentURL: URL) {
+        _ = createSubfolderAndReturnURL(named: name, inside: parentURL)
+    }
+
+    public func createSubfolderAndReturnURL(named name: String, inside parentURL: URL) -> URL? {
         do {
-            _ = try folderExplorer.createSubfolder(named: name, inside: parentURL)
+            let created = try folderExplorer.createSubfolder(named: name, inside: parentURL)
             refreshFolderTrees()
+            return created.standardizedFileURL
         } catch {
             errorMessage = error.localizedDescription
+            return nil
         }
+    }
+
+    public func presentMoveToFolder(url: URL? = nil) {
+        let targetURL = url ?? activeTab?.activePane.url
+        guard let targetURL else { return }
+        refreshFolderTrees()
+        movingPDFRequest = MovePDFRequest(url: targetURL)
+    }
+
+    public func allDestinationFolderTargets() -> [MoveFolderTarget] {
+        var result: [MoveFolderTarget] = []
+        func collect(_ node: FileTreeNode, prefix: String, depth: Int) {
+            guard node.isDirectory else { return }
+            let crumb = prefix.isEmpty ? node.name : "\(prefix) / \(node.name)"
+            result.append(MoveFolderTarget(
+                url: node.url,
+                name: node.name,
+                breadcrumb: crumb,
+                depth: depth,
+                pdfCount: node.pdfCount
+            ))
+            for child in node.children where child.isDirectory {
+                collect(child, prefix: crumb, depth: depth + 1)
+            }
+        }
+        for rootTree in folderTrees {
+            collect(rootTree, prefix: "", depth: 0)
+        }
+        return result
     }
 
     public func renameFileItem(at sourceURL: URL, to newName: String) {
@@ -1520,6 +1609,12 @@ public final class WorkspaceState {
     }
 
     public func moveFileItem(at sourceURL: URL, toFolder targetFolderURL: URL) {
+        if let err = moveFileItemReturningError(at: sourceURL, toFolder: targetFolderURL) {
+            errorMessage = err
+        }
+    }
+
+    public func moveFileItemReturningError(at sourceURL: URL, toFolder targetFolderURL: URL) -> String? {
         let stdOld = sourceURL.standardizedFileURL
         do {
             let newURL = try folderExplorer.moveItem(at: stdOld, toFolder: targetFolderURL)
@@ -1530,10 +1625,11 @@ public final class WorkspaceState {
                 renamedSingleFileTitle: nil
             )
             refreshLibrary()
-        refreshStandaloneNotebooks()
+            refreshStandaloneNotebooks()
             refreshFolderTrees()
+            return nil
         } catch {
-            errorMessage = error.localizedDescription
+            return error.localizedDescription
         }
     }
 
@@ -1560,6 +1656,7 @@ public final class WorkspaceState {
                     currentPageOCRResult = nil
                     activeDocumentOCRCount = 0
                     activeDocumentBookmarks = []
+                    lastLoadedDocumentMetaHash = nil
                     clearActiveNotebookState()
                 }
             }
@@ -2593,8 +2690,9 @@ public final class WorkspaceState {
         let resolver = footnoteResolver
         let docKey = ObjectIdentifier(document)
 
-        // Delay slightly so the window and first page paint at 120fps before background disk/CPU work begins
-        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 0.4) { [weak self] in
+        // Delay slightly so the window and first page paint at 120fps before background disk/CPU work begins;
+        // serialize on backgroundDocPrepQueue so restoring multiple tabs never opens N duplicate PDFDocuments at once.
+        backgroundDocPrepQueue.asyncAfter(deadline: .now() + 0.4) { [weak self] in
             if let bgDoc = PDFDocument(url: url) {
                 if needsFTSIndex && !db.isDocumentIndexed(hash: hash) {
                     var pages: [(pageIndex: Int, text: String)] = []
@@ -2617,7 +2715,7 @@ public final class WorkspaceState {
         }
     }
 
-    private func makePane(for url: URL, fallbackPageIndex: Int? = nil) throws -> ReaderPaneState {
+    private func makePane(for url: URL, fallbackPageIndex: Int? = nil, deferLibraryRefresh: Bool = false) throws -> ReaderPaneState {
         let (document, metadata) = try engine.loadDocument(from: url)
         let hash = LibraryDatabase.computeFileHash(for: url)
         let record = libraryDatabase.upsertDocument(
@@ -2636,8 +2734,10 @@ public final class WorkspaceState {
             outline: metadata.outline
         )
         reloadAnnotations(forDocumentHash: hash)
-        refreshLibrary()
-        refreshStandaloneNotebooks()
+        if !deferLibraryRefresh {
+            refreshLibrary()
+            refreshStandaloneNotebooks()
+        }
         scheduleBackgroundDocumentPrep(document: document, hash: hash, url: url)
 
         let saved = store.loadPosition(for: url)
@@ -2669,6 +2769,11 @@ public final class WorkspaceState {
         }
     }
 
+    public func flushPendingPersistence() {
+        persistSession()
+        store.flush()
+    }
+
     private func persistSession() {
         persistSessionTask?.cancel()
         persistSessionTask = nil
@@ -2698,7 +2803,11 @@ public final class WorkspaceState {
         var restoredTabs: [TabSession] = []
         for savedTab in session.tabs {
             let primaryURL = URL(fileURLWithPath: savedTab.primaryPath).standardizedFileURL
-            guard let primaryPane = try? makePane(for: primaryURL, fallbackPageIndex: savedTab.primaryPageIndex) else {
+            guard let primaryPane = try? makePane(
+                for: primaryURL,
+                fallbackPageIndex: savedTab.primaryPageIndex,
+                deferLibraryRefresh: true
+            ) else {
                 continue
             }
 
@@ -2718,7 +2827,8 @@ public final class WorkspaceState {
                 } else {
                     secondaryPane = try? makePane(
                         for: secondaryURL,
-                        fallbackPageIndex: savedTab.secondaryPageIndex
+                        fallbackPageIndex: savedTab.secondaryPageIndex,
+                        deferLibraryRefresh: true
                     )
                 }
             }
@@ -2730,6 +2840,11 @@ public final class WorkspaceState {
                     syncScrollEnabled: secondaryPane != nil ? savedTab.syncScrollEnabled : false
                 )
             )
+        }
+
+        if !restoredTabs.isEmpty {
+            refreshLibrary()
+            refreshStandaloneNotebooks()
         }
 
         tabs = restoredTabs

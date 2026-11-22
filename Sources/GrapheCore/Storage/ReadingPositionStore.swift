@@ -1,9 +1,13 @@
+#if canImport(AppKit)
+import AppKit
+#endif
 import Foundation
 
 public protocol ReadingPositionStoring: Sendable {
     func savePosition(_ position: ReadingPosition, for url: URL)
     func loadPosition(for url: URL) -> ReadingPosition?
     func migratePath(oldPrefix: String, newPrefix: String)
+    func flush()
     func saveRecentFiles(_ items: [RecentFileItem])
     func loadRecentFiles() -> [RecentFileItem]
     func saveTheme(_ theme: ReadingTheme)
@@ -14,6 +18,7 @@ public protocol ReadingPositionStoring: Sendable {
 
 public extension ReadingPositionStoring {
     func migratePath(oldPrefix: String, newPrefix: String) {}
+    func flush() {}
 }
 
 public final class UserDefaultsPositionStore: ReadingPositionStoring, @unchecked Sendable {
@@ -23,27 +28,93 @@ public final class UserDefaultsPositionStore: ReadingPositionStoring, @unchecked
     private let themeKey = "graphe.readingTheme.v1"
     private let sessionKey = "graphe.workspaceSession.v1"
     private let lock = NSLock()
+    private let persistLock = NSLock()
     private var cachedPositions: [String: ReadingPosition]?
+    private var positionsGeneration: UInt64 = 0
+    private var persistedGeneration: UInt64 = 0
+    private let persistQueue = DispatchQueue(label: "com.graphe.positionStore.persist", qos: .utility)
+    private var pendingPersistWorkItem: DispatchWorkItem?
+    private var terminateObserver: NSObjectProtocol?
 
     public init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
+        #if canImport(AppKit)
+        self.terminateObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.willTerminateNotification,
+            object: nil,
+            queue: nil
+        ) { [weak self] _ in
+            self?.flush()
+        }
+        #endif
+    }
+
+    deinit {
+        if let terminateObserver {
+            NotificationCenter.default.removeObserver(terminateObserver)
+        }
+        pendingPersistWorkItem?.cancel()
+        flushPositionsNow()
+    }
+
+    public func flush() {
+        persistQueue.sync {
+            pendingPersistWorkItem?.cancel()
+            pendingPersistWorkItem = nil
+        }
+        flushPositionsNow()
     }
 
     public func savePosition(_ position: ReadingPosition, for url: URL) {
         lock.lock()
-        defer { lock.unlock() }
         var map = loadPositionsMapUnlocked()
         let key = url.standardizedFileURL.path
         if let existing = map[key],
            existing.pageIndex == position.pageIndex,
            abs(existing.scaleFactor - position.scaleFactor) < 0.0001 {
+            lock.unlock()
             return
         }
         map[key] = position
         cachedPositions = map
-        if let data = try? JSONEncoder().encode(map) {
-            defaults.set(data, forKey: positionsKey)
+        positionsGeneration &+= 1
+        lock.unlock()
+
+        schedulePersistPositions()
+    }
+
+    private func schedulePersistPositions() {
+        persistQueue.async { [weak self] in
+            guard let self else { return }
+            self.pendingPersistWorkItem?.cancel()
+            let work = DispatchWorkItem { [weak self] in
+                self?.flushPositionsNow()
+            }
+            self.pendingPersistWorkItem = work
+            self.persistQueue.asyncAfter(deadline: .now() + 0.4, execute: work)
         }
+    }
+
+    private func flushPositionsNow() {
+        persistLock.lock()
+        defer { persistLock.unlock() }
+
+        lock.lock()
+        guard positionsGeneration != persistedGeneration, let snapshot = cachedPositions else {
+            lock.unlock()
+            return
+        }
+        let targetGeneration = positionsGeneration
+        lock.unlock()
+
+        guard let data = try? JSONEncoder().encode(snapshot) else { return }
+        defaults.set(data, forKey: positionsKey)
+
+        lock.lock()
+        if positionsGeneration == targetGeneration {
+            persistedGeneration = targetGeneration
+        }
+        lock.unlock()
     }
 
     public func loadPosition(for url: URL) -> ReadingPosition? {
@@ -56,7 +127,6 @@ public final class UserDefaultsPositionStore: ReadingPositionStoring, @unchecked
     public func migratePath(oldPrefix: String, newPrefix: String) {
         guard oldPrefix != newPrefix else { return }
         lock.lock()
-        defer { lock.unlock() }
         var map = loadPositionsMapUnlocked()
         var changed = false
         let prefixWithSlash = oldPrefix + "/"
@@ -74,11 +144,15 @@ public final class UserDefaultsPositionStore: ReadingPositionStoring, @unchecked
             map[item.newKey] = item.value
             changed = true
         }
-        guard changed else { return }
-        cachedPositions = map
-        if let data = try? JSONEncoder().encode(map) {
-            defaults.set(data, forKey: positionsKey)
+        guard changed else {
+            lock.unlock()
+            return
         }
+        cachedPositions = map
+        positionsGeneration &+= 1
+        lock.unlock()
+
+        flushPositionsNow()
     }
 
     public func saveRecentFiles(_ items: [RecentFileItem]) {

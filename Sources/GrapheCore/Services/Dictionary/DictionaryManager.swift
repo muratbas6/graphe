@@ -91,7 +91,6 @@ public final class DictionaryManager {
         self.defaults = defaults
         loadSavedConfigs()
         discoverBundledDictionaries()
-        prewarmDictionariesAsync()
     }
 
     /// Automatically registers any StarDict dictionaries bundled inside `Graphe.app/Contents/Resources/BundledDictionaries`.
@@ -245,10 +244,10 @@ public final class DictionaryManager {
     public func toggleEnabled(id: String) {
         guard let idx = installedDictionaries.firstIndex(where: { $0.id == id }) else { return }
         installedDictionaries[idx].isEnabled.toggle()
-        persistConfigs()
-        if installedDictionaries[idx].isEnabled {
-            prewarmDictionariesAsync()
+        if !installedDictionaries[idx].isEnabled {
+            loadedCache.removeValue(forKey: id)
         }
+        persistConfigs()
     }
 
     public func moveUp(id: String) {
