@@ -88,6 +88,7 @@ public final class WorkspaceState {
     public var activeSelection: SelectionCapture?
     public var annotationsByDocument: [String: [AnnotationItem]] = [:]
     public var indexingDocumentHashes: Set<String> = []
+    private var autoEnrichedMetadataHashes: Set<String> = []
     public var autoCroppedDocumentIDs: Set<ObjectIdentifier> = []
     public var layoutRefreshToken: UUID = UUID()
     public var ocrProgress: OCRProgressState? = nil
@@ -2739,6 +2740,7 @@ public final class WorkspaceState {
             refreshStandaloneNotebooks()
         }
         scheduleBackgroundDocumentPrep(document: document, hash: hash, url: url)
+        scheduleAutomaticMetadataEnrichmentIfNeeded(for: record, url: url)
 
         let saved = store.loadPosition(for: url)
         let resolvedPage = saved?.pageIndex ?? fallbackPageIndex ?? 0
@@ -2752,6 +2754,87 @@ public final class WorkspaceState {
             scaleFactor: saved?.scaleFactor ?? 1.0,
             shouldAutoFitWidth: saved == nil
         )
+    }
+
+    private func scheduleAutomaticMetadataEnrichmentIfNeeded(for record: LibraryDocumentRecord, url: URL) {
+        guard !ProcessInfo.processInfo.processName.contains("GrapheSelfTest") else { return }
+        guard !autoEnrichedMetadataHashes.contains(record.hash) else { return }
+
+        let hasYear = record.year != nil
+        let hasPublisher = !(record.publisher?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+        let hasISBN = !(record.isbn?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+        let hasAuthor = !(record.author?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+        if hasYear && hasPublisher && hasISBN && hasAuthor {
+            return
+        }
+
+        autoEnrichedMetadataHashes.insert(record.hash)
+        let service = metadataService
+        let db = libraryDatabase
+        let hash = record.hash
+
+        Task.detached(priority: .utility) { [weak self] in
+            // 1) Local PDF inspection (title page / colophon / ISBN / DOI / filename)
+            let localDraft = service.extractOfflineMetadata(from: url, existing: record)
+
+            let needsOnline = localDraft.year == nil
+                || localDraft.publisher.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                || localDraft.isbn.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                || localDraft.author.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+
+            var finalDraft = localDraft
+            if needsOnline, let onlineDraft = try? await service.enrichOnline(draft: localDraft) {
+                // Keep any existing user-populated fields intact; fill only what was missing
+                let mergedTitle = (record.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    || record.title == url.deletingPathExtension().lastPathComponent)
+                    ? onlineDraft.title
+                    : record.title
+                let mergedAuthor = hasAuthor ? (record.author ?? onlineDraft.author) : onlineDraft.author
+                let mergedYear = record.year ?? onlineDraft.year
+                let mergedPublisher = hasPublisher ? (record.publisher ?? onlineDraft.publisher) : onlineDraft.publisher
+                let mergedISBN = hasISBN ? (record.isbn ?? onlineDraft.isbn) : onlineDraft.isbn
+                let existingDOI = record.doi?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                let mergedDOI = existingDOI.isEmpty ? onlineDraft.doi : existingDOI
+
+                finalDraft = BookMetadataDraft(
+                    title: mergedTitle,
+                    author: mergedAuthor,
+                    year: mergedYear,
+                    publisher: mergedPublisher,
+                    isbn: mergedISBN,
+                    doi: mergedDOI
+                )
+            }
+
+            let changed = finalDraft.title != record.title
+                || finalDraft.author != (record.author ?? "")
+                || finalDraft.year != record.year
+                || finalDraft.publisher != (record.publisher ?? "")
+                || finalDraft.isbn != (record.isbn ?? "")
+                || finalDraft.doi != (record.doi ?? "")
+
+            guard changed else { return }
+
+            let cleanAuthor = finalDraft.author.trimmingCharacters(in: .whitespacesAndNewlines)
+            let cleanPub = finalDraft.publisher.trimmingCharacters(in: .whitespacesAndNewlines)
+            let cleanISBN = finalDraft.isbn.trimmingCharacters(in: .whitespacesAndNewlines)
+            let cleanDOI = finalDraft.doi.trimmingCharacters(in: .whitespacesAndNewlines)
+
+            db.updateDocumentMetadata(
+                hash: hash,
+                title: finalDraft.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? record.title : finalDraft.title.trimmingCharacters(in: .whitespacesAndNewlines),
+                author: cleanAuthor.isEmpty ? nil : cleanAuthor,
+                year: finalDraft.year,
+                publisher: cleanPub.isEmpty ? nil : cleanPub,
+                isbn: cleanISBN.isEmpty ? nil : cleanISBN,
+                doi: cleanDOI.isEmpty ? nil : cleanDOI
+            )
+
+            await MainActor.run { [weak self] in
+                guard let self else { return }
+                self.refreshLibrary()
+            }
+        }
     }
 
     private func recordRecent(url: URL, title: String) {
