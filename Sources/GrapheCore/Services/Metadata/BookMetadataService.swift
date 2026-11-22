@@ -225,13 +225,16 @@ public final class BookMetadataService: @unchecked Sendable {
         )
     }
 
-    // MARK: - 3. Opt-In Online Enrichment (CrossRef / Google Books / OpenLibrary)
+    // MARK: - 3. Opt-In Online Enrichment (CrossRef Polite Pool -> OpenLibrary -> Google Books)
+
+    private static let politeUserAgent = "Graphe/1.1 (https://github.com/muratbas6/graphe; mailto:graphe-app@users.noreply.github.com)"
+    private static let politeMailto = "graphe-app@users.noreply.github.com"
 
     public func enrichOnline(draft: BookMetadataDraft) async throws -> BookMetadataDraft {
         let result = draft
         var lastNetworkError: Error?
 
-        // 1) DOI -> CrossRef (highest accuracy for academic articles & books)
+        // 1) DOI -> CrossRef exact work lookup (highest accuracy)
         if !draft.doi.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             do {
                 if let enriched = try await queryCrossRef(doi: draft.doi, mergingInto: result) {
@@ -242,11 +245,11 @@ public final class BookMetadataService: @unchecked Sendable {
             }
         }
 
-        // 2) ISBN -> Google Books (fast) -> OpenLibrary (fallback)
+        // 2) ISBN -> CrossRef ISBN filter (fast & exact) -> OpenLibrary ISBN fallback
         let cleanISBN = draft.isbn.filter { $0.isNumber || $0 == "X" || $0 == "x" }
         if cleanISBN.count == 10 || cleanISBN.count == 13 {
             do {
-                if let enriched = try await searchGoogleBooks(query: "isbn:\(cleanISBN)", mergingInto: result) {
+                if let enriched = try await queryCrossRef(isbn: cleanISBN, mergingInto: result) {
                     return enriched
                 }
             } catch {
@@ -261,36 +264,33 @@ public final class BookMetadataService: @unchecked Sendable {
             }
         }
 
-        // 3) Title + Author -> Google Books (fast & reliable) -> CrossRef -> OpenLibrary
+        // 3) Structured Title + Author -> CrossRef Books (polite pool, strict title/author verification)
         let cleanTitle = draft.title.trimmingCharacters(in: .whitespacesAndNewlines)
         let cleanAuthor = draft.author.trimmingCharacters(in: .whitespacesAndNewlines)
-        let queryParts = [cleanTitle, cleanAuthor].filter { !$0.isEmpty }
-        if !queryParts.isEmpty {
-            let gbQuery: String
-            if !cleanTitle.isEmpty && !cleanAuthor.isEmpty {
-                gbQuery = "intitle:\(cleanTitle)+inauthor:\(cleanAuthor)"
-            } else {
-                gbQuery = queryParts.joined(separator: " ")
+        if !cleanTitle.isEmpty {
+            do {
+                if let enriched = try await searchCrossRef(title: cleanTitle, author: cleanAuthor, mergingInto: result) {
+                    return enriched
+                }
+            } catch {
+                lastNetworkError = error
             }
+
+            // 4) Fallback: OpenLibrary structured search (shorter timeout so it never hangs)
+            do {
+                if let enriched = try await searchOpenLibrary(title: cleanTitle, author: cleanAuthor, mergingInto: result) {
+                    return enriched
+                }
+            } catch {
+                lastNetworkError = error
+            }
+
+            // 5) Fallback: Google Books (may rate-limit anonymous requests with 429)
+            let gbQuery = cleanAuthor.isEmpty
+                ? cleanTitle
+                : "intitle:\(stripEditionSuffix(from: cleanTitle))+inauthor:\(cleanAuthor)"
             do {
                 if let enriched = try await searchGoogleBooks(query: gbQuery, mergingInto: result) {
-                    return enriched
-                }
-            } catch {
-                lastNetworkError = error
-            }
-
-            let joined = queryParts.joined(separator: " ")
-            do {
-                if let enriched = try await searchCrossRef(query: joined, mergingInto: result) {
-                    return enriched
-                }
-            } catch {
-                lastNetworkError = error
-            }
-
-            do {
-                if let enriched = try await searchOpenLibrary(query: joined, mergingInto: result) {
                     return enriched
                 }
             } catch {
@@ -306,9 +306,9 @@ public final class BookMetadataService: @unchecked Sendable {
 
     // MARK: - Private Network Helpers
 
-    private func fetchJSON(from url: URL) async throws -> [String: Any] {
-        var req = URLRequest(url: url, timeoutInterval: 12.0)
-        req.setValue("Graphe/1.1 (macOS Academic PDF Reader)", forHTTPHeaderField: "User-Agent")
+    private func fetchJSON(from url: URL, timeout: TimeInterval = 10.0) async throws -> [String: Any] {
+        var req = URLRequest(url: url, timeoutInterval: timeout)
+        req.setValue(Self.politeUserAgent, forHTTPHeaderField: "User-Agent")
         let (data, response): (Data, URLResponse)
         do {
             (data, response) = try await URLSession.shared.data(for: req)
@@ -322,6 +322,238 @@ public final class BookMetadataService: @unchecked Sendable {
             throw BookMetadataError.noMatchFound
         }
         return obj
+    }
+
+    private func queryCrossRef(isbn: String, mergingInto base: BookMetadataDraft) async throws -> BookMetadataDraft? {
+        var components = URLComponents(string: "https://api.crossref.org/works")
+        components?.queryItems = [
+            URLQueryItem(name: "filter", value: "isbn:\(isbn)"),
+            URLQueryItem(name: "rows", value: "3"),
+            URLQueryItem(name: "mailto", value: Self.politeMailto)
+        ]
+        guard let url = components?.url else { return nil }
+        let json = try await fetchJSON(from: url)
+        guard let message = json["message"] as? [String: Any],
+              let items = message["items"] as? [[String: Any]],
+              let first = items.first else {
+            return nil
+        }
+        return applyCrossRefItem(first, to: base)
+    }
+
+    private func searchCrossRef(title: String, author: String, mergingInto base: BookMetadataDraft) async throws -> BookMetadataDraft? {
+        let queryTitle = stripEditionSuffix(from: title)
+        let editionHint = extractEditionHint(from: title)
+
+        // Try book types first (avoids dissertations & book reviews overriding actual books)
+        if let bookMatch = try await runCrossRefQuery(
+            queryTitle: queryTitle,
+            author: author,
+            typeFilter: "type:book,type:monograph,type:edited-book",
+            base: base,
+            editionHint: editionHint
+        ) {
+            return bookMatch
+        }
+
+        // Fallback to journal articles & book chapters for academic papers
+        return try await runCrossRefQuery(
+            queryTitle: queryTitle,
+            author: author,
+            typeFilter: "type:journal-article,type:book-chapter",
+            base: base,
+            editionHint: editionHint
+        )
+    }
+
+    private func runCrossRefQuery(
+        queryTitle: String,
+        author: String,
+        typeFilter: String,
+        base: BookMetadataDraft,
+        editionHint: String?
+    ) async throws -> BookMetadataDraft? {
+        var queryItems = [
+            URLQueryItem(name: "query.title", value: queryTitle),
+            URLQueryItem(name: "filter", value: typeFilter),
+            URLQueryItem(name: "rows", value: "6"),
+            URLQueryItem(name: "mailto", value: Self.politeMailto)
+        ]
+        if !author.isEmpty {
+            queryItems.append(URLQueryItem(name: "query.author", value: author))
+        }
+        var components = URLComponents(string: "https://api.crossref.org/works")
+        components?.queryItems = queryItems
+        guard let url = components?.url else { return nil }
+
+        let json = try await fetchJSON(from: url)
+        guard let message = json["message"] as? [String: Any],
+              let items = message["items"] as? [[String: Any]],
+              !items.isEmpty else {
+            return nil
+        }
+
+        let scored: [([String: Any], Int)] = items.compactMap { item in
+            guard let score = scoreCrossRefCandidate(item, queryTitle: queryTitle, queryAuthor: author, base: base, editionHint: editionHint) else {
+                return nil
+            }
+            return (item, score)
+        }
+        guard let best = scored.max(by: { $0.1 < $1.1 })?.0 else {
+            return nil
+        }
+        return applyCrossRefItem(best, to: base)
+    }
+
+    private func scoreCrossRefCandidate(
+        _ item: [String: Any],
+        queryTitle: String,
+        queryAuthor: String,
+        base: BookMetadataDraft,
+        editionHint: String?
+    ) -> Int? {
+        guard let titles = item["title"] as? [String], let rawTitle = titles.first, !rawTitle.isEmpty else {
+            return nil
+        }
+
+        // 1) Strict title match check so unrelated books/dissertations are NEVER accepted
+        let queryTokens = normalizedTokens(queryTitle)
+        let candidateTokens = normalizedTokens(rawTitle)
+        guard !queryTokens.isEmpty && !candidateTokens.isEmpty else { return nil }
+        let overlap = queryTokens.intersection(candidateTokens).count
+        let queryCoverage = Double(overlap) / Double(queryTokens.count)
+        let candidateCoverage = Double(overlap) / Double(candidateTokens.count)
+        guard queryCoverage >= 0.6 && candidateCoverage >= 0.5 else {
+            return nil
+        }
+
+        // 2) Author surname check when author was supplied
+        var score = Int(queryCoverage * 40 + candidateCoverage * 40)
+        if !queryAuthor.isEmpty {
+            let expectedLast = queryAuthor
+                .components(separatedBy: CharacterSet(charactersIn: ";,&"))
+                .first?
+                .split(whereSeparator: { $0.isWhitespace })
+                .last?
+                .lowercased() ?? ""
+            let itemAuthors = (item["author"] as? [[String: Any]] ?? []).compactMap { a -> String? in
+                let f = (a["family"] as? String) ?? ""
+                let g = (a["given"] as? String) ?? ""
+                return "\(g) \(f)".lowercased()
+            }
+            if !expectedLast.isEmpty {
+                if itemAuthors.contains(where: { $0.contains(expectedLast) }) {
+                    score += 35
+                } else {
+                    return nil
+                }
+            }
+        }
+
+        // 3) Publisher match bonus (e.g. Routledge in Restall PDF)
+        let basePub = base.publisher.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if !basePub.isEmpty, let pub = (item["publisher"] as? String)?.lowercased(),
+           pub.contains(basePub) || basePub.contains(pub) {
+            score += 30
+        }
+
+        // 4) Year / Edition alignment
+        if let issued = item["issued"] as? [String: Any],
+           let parts = issued["date-parts"] as? [[Int]],
+           let y = parts.first?.first {
+            if let baseYear = base.year {
+                let diff = abs(y - baseYear)
+                if diff == 0 { score += 30 }
+                else if diff <= 1 { score += 18 }
+            } else if editionHint != nil {
+                // For Second/Third/Revised editions, strongly prefer the newer edition
+                score += min(25, max(0, y - 1995))
+            }
+        }
+
+        // Prefer monographs over edited-books when scores tie
+        if (item["type"] as? String) == "monograph" {
+            score += 4
+        }
+        return score
+    }
+
+    private func applyCrossRefItem(_ item: [String: Any], to base: BookMetadataDraft) -> BookMetadataDraft {
+        var updated = base
+        if let titles = item["title"] as? [String], let t = titles.first, !t.isEmpty {
+            let cleaned = t.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
+            // Preserve edition suffix (e.g. "Second Edition") if the user's title had it and CrossRef omitted it
+            if let hint = extractEditionHint(from: base.title),
+               !cleaned.lowercased().contains(hint) {
+                updated.title = "\(cleaned) (\(hint.capitalized))"
+            } else {
+                updated.title = cleaned
+            }
+        }
+        if let authors = item["author"] as? [[String: Any]] {
+            let names = authors.compactMap { a -> String? in
+                let given = (a["given"] as? String) ?? ""
+                let family = (a["family"] as? String) ?? ""
+                let full = [given, family].filter { !$0.isEmpty }.joined(separator: " ")
+                return full.isEmpty ? nil : full
+            }
+            if !names.isEmpty {
+                updated.author = names.prefix(3).joined(separator: "; ")
+            }
+        }
+        if let pub = item["publisher"] as? String, !pub.isEmpty {
+            updated.publisher = cleanPublisherName(pub)
+        }
+        if let issued = item["issued"] as? [String: Any],
+           let parts = issued["date-parts"] as? [[Int]],
+           let y = parts.first?.first {
+            if let existingYear = base.year, extractEditionHint(from: base.title) != nil, y < existingYear {
+                updated.year = existingYear
+            } else {
+                updated.year = y
+            }
+        }
+        if updated.doi.isEmpty, let foundDOI = item["DOI"] as? String, !foundDOI.isEmpty {
+            updated.doi = foundDOI
+        }
+        if updated.isbn.isEmpty, let isbns = item["ISBN"] as? [String],
+           let bestISBN = isbns.first(where: { $0.filter(\.isNumber).count == 13 }) ?? isbns.first,
+           !bestISBN.isEmpty {
+            updated.isbn = bestISBN
+        }
+        return updated
+    }
+
+    private func cleanPublisherName(_ raw: String) -> String {
+        var s = raw.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
+        // Fix CrossRef's occasional duplicated city suffix like "Oxford University PressOxford"
+        for suffix in ["Oxford", "Cambridge", "London", "New York"] {
+            if s.hasPrefix(suffix) && s.hasSuffix(suffix) && s.count > suffix.count * 2 {
+                s = String(s.dropLast(suffix.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        }
+        return s
+    }
+
+    private func stripEditionSuffix(from title: String) -> String {
+        let pattern = #"[\s,:\-\(]*(?:second|third|fourth|fifth|revised|updated|\d+(?:st|nd|rd|th))\s+edition[\)\s]*"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
+            return title
+        }
+        let range = NSRange(title.startIndex..., in: title)
+        let stripped = regex.stringByReplacingMatches(in: title, range: range, withTemplate: " ")
+            .split(whereSeparator: { $0.isWhitespace })
+            .joined(separator: " ")
+            .trimmingCharacters(in: CharacterSet(charactersIn: " :-,"))
+        return stripped.isEmpty ? title : stripped
+    }
+
+    private func normalizedTokens(_ text: String) -> Set<String> {
+        let stopWords: Set<String> = ["the", "a", "an", "of", "and", "in", "on", "to", "for", "edition", "second", "third", "2nd", "3rd"]
+        let cleaned = text.lowercased().map { $0.isLetter || $0.isNumber ? $0 : " " }
+        let words = String(cleaned).split(separator: " ").map(String.init)
+        let filtered = Set(words.filter { $0.count >= 2 && !stopWords.contains($0) })
+        return filtered.isEmpty ? Set(words) : filtered
     }
 
     private func searchGoogleBooks(query: String, mergingInto base: BookMetadataDraft) async throws -> BookMetadataDraft? {
@@ -437,52 +669,6 @@ public final class BookMetadataService: @unchecked Sendable {
         return score
     }
 
-    private func searchCrossRef(query: String, mergingInto base: BookMetadataDraft) async throws -> BookMetadataDraft? {
-        var components = URLComponents(string: "https://api.crossref.org/works")
-        components?.queryItems = [
-            URLQueryItem(name: "query.bibliographic", value: query),
-            URLQueryItem(name: "rows", value: "1")
-        ]
-        guard let url = components?.url else { return nil }
-        let json = try await fetchJSON(from: url)
-        guard let message = json["message"] as? [String: Any],
-              let items = message["items"] as? [[String: Any]],
-              let first = items.first else {
-            return nil
-        }
-
-        var updated = base
-        if let titles = first["title"] as? [String], let t = titles.first, !t.isEmpty {
-            updated.title = t
-        }
-        if let authors = first["author"] as? [[String: Any]] {
-            let names = authors.compactMap { a -> String? in
-                let given = (a["given"] as? String) ?? ""
-                let family = (a["family"] as? String) ?? ""
-                let full = [given, family].filter { !$0.isEmpty }.joined(separator: " ")
-                return full.isEmpty ? nil : full
-            }
-            if !names.isEmpty {
-                updated.author = names.prefix(3).joined(separator: "; ")
-            }
-        }
-        if let pub = first["publisher"] as? String, !pub.isEmpty {
-            updated.publisher = pub
-        }
-        if let issued = first["issued"] as? [String: Any],
-           let parts = issued["date-parts"] as? [[Int]],
-           let y = parts.first?.first {
-            updated.year = y
-        }
-        if updated.doi.isEmpty, let foundDOI = first["DOI"] as? String, !foundDOI.isEmpty {
-            updated.doi = foundDOI
-        }
-        if updated.isbn.isEmpty, let isbns = first["ISBN"] as? [String], let firstISBN = isbns.first, !firstISBN.isEmpty {
-            updated.isbn = firstISBN
-        }
-        return updated
-    }
-
     private func queryCrossRef(doi: String, mergingInto base: BookMetadataDraft) async throws -> BookMetadataDraft? {
         let trimmedDOI = doi.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let encoded = trimmedDOI.addingPercentEncoding(withAllowedCharacters: Self.doiPathAllowed),
@@ -548,17 +734,21 @@ public final class BookMetadataService: @unchecked Sendable {
         return updated
     }
 
-    private func searchOpenLibrary(query: String, mergingInto base: BookMetadataDraft) async throws -> BookMetadataDraft? {
-        var components = URLComponents(string: "https://openlibrary.org/search.json")
-        components?.queryItems = [
-            URLQueryItem(name: "q", value: query),
-            URLQueryItem(name: "limit", value: "1"),
+    private func searchOpenLibrary(title: String, author: String, mergingInto base: BookMetadataDraft) async throws -> BookMetadataDraft? {
+        var queryItems = [
+            URLQueryItem(name: "title", value: stripEditionSuffix(from: title)),
+            URLQueryItem(name: "limit", value: "3"),
             URLQueryItem(name: "fields", value: "title,author_name,first_publish_year,publish_year,publisher,isbn")
         ]
+        if !author.isEmpty {
+            queryItems.append(URLQueryItem(name: "author", value: author))
+        }
+        var components = URLComponents(string: "https://openlibrary.org/search.json")
+        components?.queryItems = queryItems
         guard let url = components?.url else {
             return nil
         }
-        let json = try await fetchJSON(from: url)
+        let json = try await fetchJSON(from: url, timeout: 6.0)
         guard let docs = json["docs"] as? [[String: Any]], let first = docs.first else { return nil }
 
         var updated = base
