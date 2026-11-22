@@ -504,14 +504,11 @@ public final class BookMetadataService: @unchecked Sendable {
         if let pub = item["publisher"] as? String, !pub.isEmpty {
             updated.publisher = cleanPublisherName(pub)
         }
-        if let issued = item["issued"] as? [String: Any],
+        if updated.year == nil,
+           let issued = item["issued"] as? [String: Any],
            let parts = issued["date-parts"] as? [[Int]],
            let y = parts.first?.first {
-            if let existingYear = base.year, extractEditionHint(from: base.title) != nil, y < existingYear {
-                updated.year = existingYear
-            } else {
-                updated.year = y
-            }
+            updated.year = y
         }
         if updated.doi.isEmpty, let foundDOI = item["DOI"] as? String, !foundDOI.isEmpty {
             updated.doi = foundDOI
@@ -592,15 +589,11 @@ public final class BookMetadataService: @unchecked Sendable {
         if let pub = volumeInfo["publisher"] as? String, !pub.isEmpty {
             updated.publisher = pub
         }
-        if let pubDate = volumeInfo["publishedDate"] as? String,
+        if updated.year == nil,
+           let pubDate = volumeInfo["publishedDate"] as? String,
            let match = firstMatch(Self.yearRegex, in: pubDate, group: 1),
            let y = Int(match) {
-            // Avoid overwriting a newer edition year already confirmed on the PDF copyright page with a 1st-edition year
-            if let existingYear = base.year, editionHint != nil, y < existingYear {
-                updated.year = existingYear
-            } else {
-                updated.year = y
-            }
+            updated.year = y
         }
         if updated.isbn.isEmpty,
            let identifiers = volumeInfo["industryIdentifiers"] as? [[String: Any]] {
