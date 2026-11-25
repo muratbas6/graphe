@@ -1,4 +1,6 @@
+#if canImport(AppKit)
 import AppKit
+#endif
 import Foundation
 
 public struct WatchedRootFolder: Identifiable, Codable, Hashable, Sendable {
@@ -132,6 +134,10 @@ public final class FolderExplorerService: @unchecked Sendable {
         var totalPDFs = 0
 
         for entry in entries {
+            let entryName = entry.lastPathComponent
+            if entryName == CloudSyncService.syncDirectoryName || entryName == CloudSyncService.legacyHiddenSyncDirectoryName {
+                continue
+            }
             let std = entry.standardizedFileURL
             let values = try? std.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
             if values?.isDirectory == true {
@@ -308,12 +314,18 @@ public final class FolderExplorerService: @unchecked Sendable {
     }
 
     public func trashItem(at url: URL) throws {
+        #if os(macOS)
         var trashedURL: NSURL?
         try FileManager.default.trashItem(at: url.standardizedFileURL, resultingItemURL: &trashedURL)
+        #else
+        try FileManager.default.removeItem(at: url.standardizedFileURL)
+        #endif
     }
 
     public func revealInFinder(at url: URL) {
+        #if canImport(AppKit)
         NSWorkspace.shared.activateFileViewerSelecting([url.standardizedFileURL])
+        #endif
     }
 
     private func sanitizeFileName(_ raw: String) -> String {

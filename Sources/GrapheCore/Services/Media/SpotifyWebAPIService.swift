@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import CryptoKit
 import Foundation
@@ -611,3 +612,4 @@ private final class LoopbackOAuthServer: @unchecked Sendable {
         cont?.resume(with: result)
     }
 }
+#endif

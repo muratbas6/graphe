@@ -1,3 +1,4 @@
+#if os(macOS)
 import SwiftUI
 
 public struct CommandPaletteItem: Identifiable {
@@ -487,3 +488,4 @@ public struct CommandPaletteView: View {
         return cmds
     }
 }
+#endif

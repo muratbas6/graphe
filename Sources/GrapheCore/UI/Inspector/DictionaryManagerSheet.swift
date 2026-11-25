@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
@@ -172,3 +173,4 @@ public struct DictionaryManagerSheet: View {
         }
     }
 }
+#endif

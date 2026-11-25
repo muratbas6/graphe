@@ -1,4 +1,8 @@
+#if canImport(AppKit)
 import AppKit
+#elseif canImport(UIKit)
+import UIKit
+#endif
 import CoreText
 import Foundation
 import SwiftUI
@@ -19,8 +23,9 @@ public enum NotebookFontCatalog {
         family == systemKey ? "Sistem (SF Pro)" : family
     }
 
-    /// Scans `~/Library/Fonts` via CoreText to surface user-downloaded fonts (e.g. Courier Prime) right at the top.
+    /// Scans `~/Library/Fonts` via CoreText on macOS to surface user-downloaded fonts (e.g. Courier Prime) right at the top.
     public static func userInstalledFamilies() -> [String] {
+        #if os(macOS)
         let fm = FileManager.default
         let userFontsURL = fm.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/Fonts", isDirectory: true)
@@ -49,19 +54,32 @@ public enum NotebookFontCatalog {
             }
         }
         return families.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+        #else
+        return []
+        #endif
     }
 
     public static func availableCuratedFamilies() -> [String] {
+        #if canImport(AppKit)
         let installed = Set(NSFontManager.shared.availableFontFamilies)
+        #elseif canImport(UIKit)
+        let installed = Set(UIFont.familyNames)
+        #endif
         return curatedBaseFamilies.filter { $0 == systemKey || installed.contains($0) }
     }
 
     public static func otherSystemFamilies(excluding excluded: Set<String>) -> [String] {
-        NSFontManager.shared.availableFontFamilies
+        #if canImport(AppKit)
+        let all = NSFontManager.shared.availableFontFamilies
+        #elseif canImport(UIKit)
+        let all = UIFont.familyNames
+        #endif
+        return all
             .filter { !$0.hasPrefix(".") && !excluded.contains($0) }
             .sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
     }
 
+    #if canImport(AppKit)
     public static func nsFont(family: String, size: CGFloat, weight: NSFont.Weight = .regular) -> NSFont {
         if family == systemKey || family.isEmpty {
             return NSFont.systemFont(ofSize: size, weight: weight)
@@ -80,11 +98,13 @@ public enum NotebookFontCatalog {
         }
         return NSFont.systemFont(ofSize: size, weight: weight)
     }
+    #endif
 
     public static func swiftUIFont(family: String, size: CGFloat, weight: Font.Weight = .regular) -> Font {
         if family == systemKey || family.isEmpty {
             return .system(size: size, weight: weight)
         }
+        #if canImport(AppKit)
         let nsWeight: NSFont.Weight
         switch weight {
         case .bold, .heavy, .black: nsWeight = .bold
@@ -92,5 +112,8 @@ public enum NotebookFontCatalog {
         default: nsWeight = .regular
         }
         return Font(nsFont(family: family, size: size, weight: nsWeight))
+        #elseif canImport(UIKit)
+        return .custom(family, size: size).weight(weight)
+        #endif
     }
 }

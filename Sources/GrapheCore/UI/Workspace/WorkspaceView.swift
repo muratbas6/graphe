@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
@@ -912,3 +913,4 @@ private struct WorkspaceTabPill: View {
         }
     }
 }
+#endif

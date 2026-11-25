@@ -390,6 +390,16 @@ struct GrapheSelfTestMain {
                 assertEqual(heuristicPreview?.origin, .endnoteHeuristic, "14 numaralı işaretçi Notes sayfasından çözülmeli")
                 assertEqual(heuristicPreview?.targetPageIndex, 2, "Heuristik sonnot hedefi index 2 olmalı")
                 assertEqual(heuristicPreview?.extractedText.contains("Bu kitap sonu notudur"), true, "Sonnot içeriği eşleşmeli")
+
+                // Yanlış pozitif koruması: satırın sağındaki boş kenar boşluğuna veya boşluğa tıklanınca dipnot AÇILMAMALI
+                let blankMarginClick = CGPoint(x: 540, y: bounds14.midY)
+                let blankPreview = resolver.resolveMarkerClick(
+                    at: blankMarginClick,
+                    on: fnPage1,
+                    in: fnDoc,
+                    documentTitle: fnMeta.title
+                )
+                assertEqual(blankPreview == nil, true, "Boş kenar boşluğuna tıklanınca yanlış dipnot açılmamalı")
             }
         }
 
@@ -814,6 +824,7 @@ struct GrapheSelfTestMain {
         try backupSvc.createBackup(
             database: libDB,
             vocabulary: [VocabularyItem(term: "Dasein", definition: "Being-there")],
+            assetsDirectory: restoreAssetsDir,
             destinationURL: backupURL
         )
         assertEqual(FileManager.default.fileExists(atPath: backupURL.path), true, ".graphebackup arşivi oluşturulmalı")
@@ -1165,6 +1176,116 @@ struct GrapheSelfTestMain {
             assertEqual(libState.standaloneNotebooks.contains(where: { $0.id == nb.id }), false, "Bağımsız defter silinebilmeli")
         }
         print("PASS: Bağımsız Defterler (PDF'siz Not Tutma, LaTeX Export & CRUD) testi")
+
+        // 21. Mac <-> iPhone iCloud Drive İki Yönlü Eşitleme (CloudSyncService) testi
+        do {
+            let syncFolder = URL(fileURLWithPath: "/tmp/graphe-cloudsync-test-\(UUID().uuidString)", isDirectory: true)
+            let macAssets = URL(fileURLWithPath: "/tmp/graphe-mac-assets-\(UUID().uuidString)", isDirectory: true)
+            let iosAssets = URL(fileURLWithPath: "/tmp/graphe-ios-assets-\(UUID().uuidString)", isDirectory: true)
+            defer {
+                try? FileManager.default.removeItem(at: syncFolder)
+                try? FileManager.default.removeItem(at: macAssets)
+                try? FileManager.default.removeItem(at: iosAssets)
+            }
+            try FileManager.default.createDirectory(at: syncFolder, withIntermediateDirectories: true)
+            let sampleSrc = try makeSamplePDF(pageCount: 2, title: "Logic")
+            defer { try? FileManager.default.removeItem(at: sampleSrc) }
+            let syncedPDF = syncFolder.appendingPathComponent("Priest-Logic.pdf")
+            try FileManager.default.copyItem(at: sampleSrc, to: syncedPDF)
+
+            let macDB = try LibraryDatabase(path: ":memory:")
+            let iosDB = try LibraryDatabase(path: ":memory:")
+            let syncService = CloudSyncService(defaults: UserDefaults(suiteName: "com.graphe.selftest.sync.\(UUID().uuidString)")!)
+
+            let pdfHash = LibraryDatabase.computeFileHash(for: syncedPDF)
+            _ = macDB.upsertDocument(hash: pdfHash, path: syncedPDF.path, title: "Logic", author: "Graham Priest", pageCount: 3)
+            let macHighlight = AnnotationItem(documentHash: pdfHash, pageIndex: 1, kind: .highlight, color: .yellow, quote: "Paraconsistent logic")
+            macDB.upsertAnnotation(macHighlight)
+            let macNb = StandaloneNotebook(title: "Mantık Günlüğü", color: .purple)
+            macDB.upsertStandaloneNotebook(macNb)
+            let (_, macPage) = macDB.ensureDefaultNotebook(forDocumentHash: macNb.storageHash)
+            macDB.upsertNoteContainer(
+                NoteContainer(pageID: macPage.id, documentHash: macNb.storageHash, kind: .richText, plainText: "Mac üzerinde yazılan not."),
+                pageTitle: macPage.title
+            )
+
+            // Mac -> iCloud klasörü
+            let r1 = try syncService.synchronize(folder: syncFolder, database: macDB, localAssetsDirectory: macAssets)
+            assertEqual(r1.discoveredPDFCount, 1, "Eşitleme klasöründeki PDF bulunmalı")
+
+            // iCloud klasörü -> iPhone DB
+            _ = try syncService.synchronize(folder: syncFolder, database: iosDB, localAssetsDirectory: iosAssets)
+            assertEqual(iosDB.fetchAnnotations(forDocumentHash: pdfHash).count, 1, "Mac vurgusu iPhone'a geçmeli")
+            assertEqual(iosDB.fetchAllStandaloneNotebooks().first?.title, "Mantık Günlüğü", "Bağımsız defter iPhone'a geçmeli")
+
+            // iPhone'da yeni günlük not ekle -> tekrar Mac'e eşitlensin
+            iosDB.upsertNoteContainer(
+                NoteContainer(pageID: macPage.id, documentHash: macNb.storageHash, kind: .richText, y: 260, plainText: "iPhone 13'ten eklenen günlük not."),
+                pageTitle: macPage.title
+            )
+            _ = try syncService.synchronize(folder: syncFolder, database: iosDB, localAssetsDirectory: iosAssets)
+            _ = try syncService.synchronize(folder: syncFolder, database: macDB, localAssetsDirectory: macAssets)
+            let mergedContainers = macDB.fetchNoteContainers(forPageID: macPage.id)
+            assertEqual(mergedContainers.count, 2, "iPhone'da yazılan günlük not Mac defterine birleşmeli")
+        }
+        print("PASS: Mac ↔ iPhone iCloud Drive İki Yönlü Eşitleme (CloudSyncService) testi")
+
+        // 22. OCR'sız Görsel Sütun & Satır Arası Boşluk Analizi (VisualReadingFlowService) testi
+        do {
+            let flowPDFURL = URL(fileURLWithPath: "/tmp/graphe-visualflow-test-\(UUID().uuidString).pdf")
+            defer { try? FileManager.default.removeItem(at: flowPDFURL) }
+            var box = CGRect(x: 0, y: 0, width: 595, height: 842)
+            let pdfCtx = CGContext(flowPDFURL as CFURL, mediaBox: &box, nil)!
+            let drawLine: (String, CGFloat, CGFloat, CGFloat) -> Void = { str, x, y, size in
+                let ctFont = CTFontCreateWithName("Times-Roman" as CFString, size, nil)
+                let attr = NSAttributedString(
+                    string: str,
+                    attributes: [NSAttributedString.Key(kCTFontAttributeName as String): ctFont]
+                )
+                let line = CTLineCreateWithAttributedString(attr)
+                pdfCtx.saveGState()
+                pdfCtx.textMatrix = CGAffineTransform(translationX: x, y: y)
+                CTLineDraw(line, pdfCtx)
+                pdfCtx.restoreGState()
+            }
+
+            // Sayfa 0: Tek sütun kitap sayfası (geniş kenar boşlukları + net satır aralıkları)
+            pdfCtx.beginPDFPage(nil)
+            for i in 0..<14 {
+                drawLine("Logic is the study of valid consequence across formal systems.", 95, CGFloat(680 - i * 24), 12)
+            }
+            pdfCtx.endPDFPage()
+
+            // Sayfa 1: Çift sütunlu akademik makale sayfası
+            pdfCtx.beginPDFPage(nil)
+            for i in 0..<22 {
+                let y = CGFloat(720 - i * 22)
+                drawLine("Left column formal proof line \(i).", 55, y, 10.5)
+                drawLine("Right column semantic model \(i).", 315, y, 10.5)
+            }
+            pdfCtx.endPDFPage()
+            pdfCtx.closePDF()
+
+            let doc = PDFDocument(url: flowPDFURL)!
+            let flowSvc = VisualReadingFlowService()
+
+            let singleLayout = flowSvc.analyzePage(doc.page(at: 0)!, pageIndex: 0)
+            assertEqual(singleLayout.isTwoColumn, false, "Tek sütunlu sayfa doğru tanınmalı")
+            assertEqual(singleLayout.tightInkRect.minX > 75, true, "Sol beyaz kenar boşluğu piksel analiziyle kırpılmalı")
+            assertEqual(singleLayout.slices.first!.lineGapYs.count >= 10, true, "Satır arası yatay beyaz boşluklar OCR'sız bulunmalı")
+
+            let twoColLayout = flowSvc.analyzePage(doc.page(at: 1)!, pageIndex: 1)
+            assertEqual(twoColLayout.isTwoColumn, true, "Çift sütunlu makale sayfası OCR'sız algılanmalı")
+            assertEqual(twoColLayout.slices.count >= 2, true, "Sol ve sağ sütun dilimleri ayrı üretilmeli")
+
+            // k2pdfopt tarzı OCR'sız 1.9x görsel kelime büyütme ve satır kaydırma testi
+            let reflowed = flowSvc.renderReflowedPage(doc.page(at: 0)!, pageIndex: 0, targetWidthPt: 390, zoomMultiplier: 1.9)
+            assertEqual(reflowed != nil, true, "Görsel büyütme sayfası üretilmeli")
+            assertEqual(reflowed?.logicalSize.width, 390, "Çıktı genişliği telefon ekran genişliğine tam oturmalı")
+            assertEqual((reflowed?.wordHitBoxes.count ?? 0) >= 60, true, "Kelimeler piksel boşluklarından ayrı kutular olarak çıkarılmalı")
+            assertEqual((reflowed?.rowBreakYs.count ?? 0) >= 15, true, "Kaydırılan satır araları adım kaydırma için kaydedilmeli")
+        }
+        print("PASS: OCR'sız Görsel Sütun & Satır Arası Boşluk Analizi (VisualReadingFlowService) testi")
 
         print("ALL SELF-TESTS PASSED!")
 

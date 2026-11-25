@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import SwiftUI
 
@@ -477,3 +478,4 @@ public struct MoveToFolderSheet: View {
         dismiss()
     }
 }
+#endif

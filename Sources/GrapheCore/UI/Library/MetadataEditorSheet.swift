@@ -1,3 +1,4 @@
+#if os(macOS)
 import SwiftUI
 
 public struct MetadataEditorSheet: View {
@@ -203,3 +204,4 @@ public struct MetadataEditorSheet: View {
         }
     }
 }
+#endif

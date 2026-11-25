@@ -1,4 +1,6 @@
+#if os(macOS)
 import CoreServices.DictionaryServices
+#endif
 import Foundation
 import NaturalLanguage
 
@@ -78,6 +80,7 @@ public struct SystemOfflineDictionaryService: DictionaryProviding {
 
     public func detectLanguage(for text: String) -> (code: String, name: String)? {
         let recognizer = NLLanguageRecognizer()
+        recognizer.languageConstraints = [.english, .turkish, .german, .french, .italian, .spanish]
         recognizer.processString(text)
         guard let dominant = recognizer.dominantLanguage,
               dominant != .undetermined else {
@@ -102,22 +105,45 @@ public struct SystemOfflineDictionaryService: DictionaryProviding {
         return trimmed
     }
 
-    private func lemmatize(_ word: String) -> String? {
-        let tagger = NLTagger(tagSchemes: [.lemma])
-        tagger.string = word
-        let range = word.startIndex..<word.endIndex
-        var foundLemma: String?
-        tagger.enumerateTags(in: range, unit: .word, scheme: .lemma, options: [.omitWhitespace, .omitPunctuation]) { tag, _ in
-            if let raw = tag?.rawValue, !raw.isEmpty {
-                foundLemma = raw
-                return false
-            }
-            return true
+    /// Pure offline English suffix lemmatizer — never invokes NLTagger(.lemma), which on macOS 15+
+    /// can misdetect short words as Indonesian/Malay and trigger OS "Download Dictionary" prompts.
+    public static func lightweightEnglishStems(for word: String) -> [String] {
+        let lower = word.lowercased()
+        guard lower.count >= 4, lower.allSatisfy(\.isLetter) else { return [] }
+        var out: [String] = []
+        func add(_ s: String) {
+            if s.count >= 3 && s != lower && !out.contains(s) { out.append(s) }
         }
-        return foundLemma
+        if lower.hasSuffix("ies") && lower.count >= 5 {
+            add(String(lower.dropLast(3)) + "y")
+        }
+        if lower.hasSuffix("es") {
+            add(String(lower.dropLast(2)))
+            add(String(lower.dropLast(1)))
+        } else if lower.hasSuffix("s") && !lower.hasSuffix("ss") {
+            add(String(lower.dropLast(1)))
+        }
+        if lower.hasSuffix("ied") && lower.count >= 5 {
+            add(String(lower.dropLast(3)) + "y")
+        } else if lower.hasSuffix("ed") && lower.count >= 5 {
+            let base = String(lower.dropLast(2))
+            add(base)
+            add(base + "e")
+        }
+        if lower.hasSuffix("ing") && lower.count >= 6 {
+            let base = String(lower.dropLast(3))
+            add(base)
+            add(base + "e")
+        }
+        return out
+    }
+
+    private func lemmatize(_ word: String) -> String? {
+        Self.lightweightEnglishStems(for: word).first
     }
 
     private func querySystemDictionary(_ term: String) -> String? {
+        #if os(macOS)
         let nsTerm = term as NSString
         guard nsTerm.length > 0 else { return nil }
         let cfRange = CFRange(location: 0, length: nsTerm.length)
@@ -127,6 +153,9 @@ public struct SystemOfflineDictionaryService: DictionaryProviding {
         let result = (unmanaged.takeRetainedValue() as String)
             .trimmingCharacters(in: .whitespacesAndNewlines)
         return result.isEmpty ? nil : result
+        #else
+        return nil
+        #endif
     }
 
     public func formatDefinition(_ raw: String) -> [String] {

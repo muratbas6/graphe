@@ -1,4 +1,3 @@
-import AppKit
 import CoreGraphics
 import CoreML
 import CoreText
@@ -330,13 +329,12 @@ public final class VisionOCRService: @unchecked Sendable {
 
             let observations = performMicroRecognition(on: cgImage)
             for obs in observations {
-                for cand in obs.topCandidates(3) {
-                    let s = cand.string.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if !s.isEmpty && !candidates.contains(s) {
-                        candidates.append(s)
-                        if earlyStop?(s) == true {
-                            return candidates
-                        }
+                guard let cand = obs.topCandidates(1).first, cand.confidence >= 0.60 else { continue }
+                let s = cand.string.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !s.isEmpty && !candidates.contains(s) {
+                    candidates.append(s)
+                    if earlyStop?(s) == true {
+                        return candidates
                     }
                 }
             }
@@ -408,7 +406,7 @@ public final class VisionOCRService: @unchecked Sendable {
             return nil
         }
 
-        ctx.setFillColor(NSColor.white.cgColor)
+        ctx.setFillColor(CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 1))
         ctx.fill(CGRect(x: 0, y: 0, width: totalW, height: totalH))
 
         ctx.saveGState()
@@ -447,7 +445,7 @@ public final class VisionOCRService: @unchecked Sendable {
             return nil
         }
 
-        ctx.setFillColor(NSColor.white.cgColor)
+        ctx.setFillColor(CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 1))
         ctx.fill(CGRect(x: 0, y: 0, width: CGFloat(pixelWidth), height: CGFloat(pixelHeight)))
 
         ctx.saveGState()

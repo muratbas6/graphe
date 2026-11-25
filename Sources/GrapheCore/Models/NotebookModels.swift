@@ -1,4 +1,3 @@
-import AppKit
 import Foundation
 import SwiftUI
 
@@ -124,7 +123,7 @@ public struct NotebookPage: Identifiable, Hashable, Codable, Sendable {
     }
 }
 
-public struct NoteContainer: Identifiable, Hashable, Sendable {
+public struct NoteContainer: Identifiable, Codable, Hashable, Sendable {
     public let id: UUID
     public let pageID: UUID
     public let documentHash: String

@@ -1,4 +1,4 @@
-import AppKit
+import CoreGraphics
 import Foundation
 
 public enum FootnoteOrigin: String, Sendable {
@@ -22,7 +22,7 @@ public struct FootnotePreview: Identifiable, @unchecked Sendable {
     public let targetPageIndex: Int
     public let targetRect: CGRect?
     public let extractedText: String
-    public let snapshotImage: NSImage?
+    public let snapshotImage: PlatformImage?
     public let origin: FootnoteOrigin
     public let documentTitle: String
     public let documentHash: String?
@@ -34,7 +34,7 @@ public struct FootnotePreview: Identifiable, @unchecked Sendable {
         targetPageIndex: Int,
         targetRect: CGRect?,
         extractedText: String,
-        snapshotImage: NSImage?,
+        snapshotImage: PlatformImage?,
         origin: FootnoteOrigin,
         documentTitle: String,
         documentHash: String? = nil

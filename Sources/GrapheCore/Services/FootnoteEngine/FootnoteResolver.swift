@@ -1,4 +1,8 @@
+#if canImport(AppKit)
 import AppKit
+#elseif canImport(UIKit)
+import UIKit
+#endif
 import Foundation
 import PDFKit
 
@@ -342,25 +346,83 @@ public final class FootnoteResolver: @unchecked Sendable {
         }
 
         let mediaBox = page.bounds(for: .mediaBox)
-        let bottomRect = CGRect(
-            x: mediaBox.minX,
-            y: mediaBox.minY,
-            width: mediaBox.width,
-            height: mediaBox.height * Self.bottomScanHeightRatio
-        )
-        guard let rawBottom = page.selection(for: bottomRect)?.string,
-              !rawBottom.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        let candidateFootnoteText = extractVerifiedBottomFootnoteRegionText(from: page, mediaBox: mediaBox)
+        guard !candidateFootnoteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             if let docKey {
                 storePageFootnotes([], for: docKey, pageIndex: pageIndex)
             }
             return []
         }
 
-        let parsed = parseFootnoteBlocks(from: rawBottom, pageIndex: pageIndex)
+        let parsed = parseFootnoteBlocks(from: candidateFootnoteText, pageIndex: pageIndex)
         if let docKey {
             storePageFootnotes(parsed, for: docKey, pageIndex: pageIndex)
         }
         return parsed
+    }
+
+    private func extractVerifiedBottomFootnoteRegionText(from page: PDFPage, mediaBox: CGRect) -> String {
+        guard let fullSel = page.selection(for: mediaBox) else { return "" }
+        let lineSels = fullSel.selectionsByLine()
+        var positioned: [(text: String, bounds: CGRect)] = []
+        for sel in lineSels where sel.pages.contains(page) {
+            guard let s = sel.string?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty else { continue }
+            let b = sel.bounds(for: page)
+            guard !b.isNull, !b.isEmpty, b.height > 1 else { continue }
+            positioned.append((s, b))
+        }
+
+        guard positioned.count >= 2 else {
+            let bottomRect = CGRect(
+                x: mediaBox.minX,
+                y: mediaBox.minY,
+                width: mediaBox.width,
+                height: mediaBox.height * 0.30
+            )
+            return page.selection(for: bottomRect)?.string ?? ""
+        }
+
+        // Sort top-to-bottom (descending midY)
+        positioned.sort { lhs, rhs in
+            if abs(lhs.bounds.midY - rhs.bounds.midY) > min(lhs.bounds.height, rhs.bounds.height) * 0.45 {
+                return lhs.bounds.midY > rhs.bounds.midY
+            }
+            return lhs.bounds.minX < rhs.bounds.minX
+        }
+
+        let upperCutoff = mediaBox.minY + mediaBox.height * 0.45
+        let upperHeights = positioned.filter { $0.bounds.midY >= upperCutoff }.map(\.bounds.height).sorted()
+        let allHeights = positioned.map(\.bounds.height).sorted()
+        let medianBodyHeight = upperHeights.isEmpty
+            ? allHeights[allHeights.count / 2]
+            : upperHeights[upperHeights.count / 2]
+
+        let maxFootnoteZoneY = mediaBox.minY + mediaBox.height * 0.40
+        let strictBottomZoneY = mediaBox.minY + mediaBox.height * 0.28
+
+        var startIndex: Int?
+        for idx in 1..<positioned.count {
+            let curr = positioned[idx]
+            guard curr.bounds.maxY <= maxFootnoteZoneY else { continue }
+            if isStandalonePageNumber(curr.text) { continue }
+
+            let prev = positioned[idx - 1]
+            let vGap = prev.bounds.minY - curr.bounds.maxY
+            let isSmallerFont = curr.bounds.height < medianBodyHeight * 0.91
+            let isExplicitSymbolOrSup = curr.text.first.map {
+                $0 == "*" || $0 == "†" || $0 == "‡" || isUnicodeSuperscriptDigit($0)
+            } ?? false
+            let isSeparatedAtBottom = curr.bounds.maxY <= strictBottomZoneY && vGap > medianBodyHeight * 0.80
+
+            if (isSmallerFont || isExplicitSymbolOrSup || isSeparatedAtBottom),
+               matchFootnoteStart(in: curr.text) != nil {
+                startIndex = idx
+                break
+            }
+        }
+
+        guard let start = startIndex else { return "" }
+        return positioned[start...].map(\.text).joined(separator: "\n")
     }
 
     // MARK: - 4. Marker & Footnote Block Parsing (Public for Unit Testing)
@@ -522,7 +584,7 @@ public final class FootnoteResolver: @unchecked Sendable {
 
     // MARK: - 5. Retina Snapshot Renderer
 
-    public func renderSnapshot(of page: PDFPage, cropRect: CGRect, scale: CGFloat = 2.0) -> NSImage? {
+    public func renderSnapshot(of page: PDFPage, cropRect: CGRect, scale: CGFloat = 2.0) -> PlatformImage? {
         let mediaBox = page.bounds(for: .mediaBox)
         let clamped = cropRect.intersection(mediaBox)
         guard !clamped.isNull, clamped.width > 1, clamped.height > 1 else {
@@ -552,7 +614,7 @@ public final class FootnoteResolver: @unchecked Sendable {
             return nil
         }
 
-        ctx.setFillColor(NSColor.white.cgColor)
+        ctx.setFillColor(CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 1))
         ctx.fill(CGRect(x: 0, y: 0, width: CGFloat(pixelWidth), height: CGFloat(pixelHeight)))
 
         ctx.saveGState()
@@ -565,7 +627,11 @@ public final class FootnoteResolver: @unchecked Sendable {
         ctx.restoreGState()
 
         guard let cgImage = ctx.makeImage() else { return nil }
+        #if canImport(AppKit)
         return NSImage(cgImage: cgImage, size: displayRect.size)
+        #elseif canImport(UIKit)
+        return UIImage(cgImage: cgImage, scale: scale, orientation: .up)
+        #endif
     }
 
     // MARK: - Internal Helpers
@@ -616,9 +682,18 @@ public final class FootnoteResolver: @unchecked Sendable {
 
     private func extractMarkerToken(at pagePoint: CGPoint, on page: PDFPage) -> String? {
         let wordSelection = page.selectionForWord(at: pagePoint)
-        if let rawWord = wordSelection?.string {
-            let trimmedWord = normalizeSuperscripts(rawWord)
-                .trimmingCharacters(in: .whitespacesAndNewlines)
+        let wordBounds = wordSelection?.bounds(for: page) ?? .null
+        let isInsideWord = !wordBounds.isNull && !wordBounds.isEmpty
+            && wordBounds.insetBy(dx: -4.0, dy: -4.0).contains(pagePoint)
+
+        if isInsideWord, let rawWord = wordSelection?.string {
+            let rawTrimmed = rawWord.trimmingCharacters(in: .whitespacesAndNewlines)
+            // Parenthesized numbers in body prose like "(1)" or "(2)" are logic premises/equations, not footnotes
+            if rawTrimmed.hasPrefix("(") && rawTrimmed.hasSuffix(")") {
+                return nil
+            }
+
+            let trimmedWord = normalizeSuperscripts(rawTrimmed)
                 .trimmingCharacters(in: CharacterSet(charactersIn: "[](){}.,;:\"'"))
             // Reject 4+ digit numbers (years like 1925) and ordinals (19th, 2nd) before checking tinyRect
             if trimmedWord.count >= 4 && trimmedWord.allSatisfy({ $0.isASCII && $0.isNumber }) {
@@ -631,7 +706,6 @@ public final class FootnoteResolver: @unchecked Sendable {
                 return nil
             }
             if let standalone = parseMarkerToken(from: rawWord, allowGluedSuffix: false) {
-                // Distinguish OCR-spaced double asterisk "* *" from single "*" when clicking either asterisk
                 if standalone == "*" {
                     let asteriskRect = CGRect(x: pagePoint.x - 9, y: pagePoint.y - 6, width: 18, height: 12)
                     if let nearAst = page.selection(for: asteriskRect)?.string,
@@ -643,22 +717,27 @@ public final class FootnoteResolver: @unchecked Sendable {
             }
         }
 
-        // Check tight area around the exact click point (handles glued superscripts cleanly)
-        let tinyRect = CGRect(x: pagePoint.x - 7, y: pagePoint.y - 6, width: 14, height: 12)
-        if let near = page.selection(for: tinyRect)?.string {
-            if near.replacingOccurrences(of: "* *", with: "**").contains("**") {
-                return "**"
-            }
-            if let token = parseMarkerToken(from: near, allowGluedSuffix: true) {
-                return token
+        // Check tight 8x8pt area around the exact click point (verifying the selection actually touches pagePoint)
+        let tinyRect = CGRect(x: pagePoint.x - 4.0, y: pagePoint.y - 4.0, width: 8.0, height: 8.0)
+        if let nearSel = page.selection(for: tinyRect),
+           !nearSel.bounds(for: page).isEmpty,
+           nearSel.bounds(for: page).insetBy(dx: -4.5, dy: -4.5).contains(pagePoint),
+           let near = nearSel.string {
+            let trimmedNear = near.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !(trimmedNear.hasPrefix("(") && trimmedNear.hasSuffix(")")) {
+                if near.replacingOccurrences(of: "* *", with: "**").contains("**") {
+                    return "**"
+                }
+                if let token = parseMarkerToken(from: near, allowGluedSuffix: true) {
+                    return token
+                }
             }
         }
 
-        // For glued words like "development.3", trigger when clicking near the trailing edge
-        if let wordSelection, let rawWord = wordSelection.string {
-            let bounds = wordSelection.bounds(for: page)
-            let trailingZoneStart = min(bounds.maxX - 18, bounds.minX + bounds.width * 0.65)
-            if pagePoint.x >= trailingZoneStart,
+        // For glued words like "development.3", trigger only when clicking inside the trailing edge of the word
+        if isInsideWord, let rawWord = wordSelection?.string {
+            let trailingZoneStart = min(wordBounds.maxX - 16, wordBounds.minX + wordBounds.width * 0.65)
+            if pagePoint.x >= trailingZoneStart && pagePoint.x <= wordBounds.maxX + 4.0,
                let glued = parseMarkerToken(from: rawWord, allowGluedSuffix: true) {
                 return glued
             }
@@ -669,7 +748,7 @@ public final class FootnoteResolver: @unchecked Sendable {
 
     public func extractMarkerToken(at pagePoint: CGPoint, from ocrPage: OCRPageResult) -> String? {
         for block in ocrPage.blocks {
-            let rect = block.rect.cgRect.insetBy(dx: -8, dy: -6)
+            let rect = block.rect.cgRect.insetBy(dx: -4, dy: -4)
             guard rect.contains(pagePoint), !block.text.isEmpty else { continue }
 
             // If the entire block is a standalone marker
@@ -682,8 +761,8 @@ public final class FootnoteResolver: @unchecked Sendable {
             let ratio = max(0.0, min(1.0, (Double(pagePoint.x) - block.rect.x) / width))
             let chars = Array(block.text)
             let centerIdx = min(chars.count - 1, max(0, Int(round(ratio * Double(chars.count)))))
-            let startIdx = max(0, centerIdx - 12)
-            let endIdx = min(chars.count, centerIdx + 12)
+            let startIdx = max(0, centerIdx - 6)
+            let endIdx = min(chars.count, centerIdx + 6)
             let window = String(chars[startIdx..<endIdx])
 
             for token in window.split(whereSeparator: { $0.isWhitespace }) {
@@ -696,32 +775,31 @@ public final class FootnoteResolver: @unchecked Sendable {
     }
 
     private func isPlausibleSuperscriptClick(at pagePoint: CGPoint, on page: PDFPage) -> Bool {
-        let tinyRect = CGRect(x: pagePoint.x - 8, y: pagePoint.y - 8, width: 16, height: 16)
-        let nearText = (page.selection(for: tinyRect)?.string ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-
-        // Scanned page without text layer -> always allow micro-OCR on click
-        if nearText.isEmpty {
+        let pageHasEmbeddedText = !(page.string?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+        if !pageHasEmbeddedText {
+            // Pure scanned image page without any PDF text layer -> allow micro-OCR at click point
             return true
         }
 
-        // Stray punctuation / OCR misreads like `.'`, `?`, `’`, `"`, `*`, or `I`/`l` (misread `¹`)
-        let triggerChars = CharacterSet(charactersIn: ".,;:'\"‘’“”?!*†‡^°`|)]}")
-        if nearText.unicodeScalars.contains(where: { triggerChars.contains($0) || CharacterSet.decimalDigits.contains($0) }) {
-            return true
+        // On pages WITH embedded text, clicking blank space / margins must NEVER run Vision OCR!
+        let tinyRect = CGRect(x: pagePoint.x - 4.0, y: pagePoint.y - 4.0, width: 8.0, height: 8.0)
+        guard let nearSel = page.selection(for: tinyRect),
+              !nearSel.bounds(for: page).isEmpty,
+              nearSel.bounds(for: page).insetBy(dx: -4.0, dy: -4.0).contains(pagePoint) else {
+            return false
         }
-        if nearText == "I" || nearText == "l" {
-            return true
-        }
+        let nearText = (nearSel.string ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !nearText.isEmpty else { return false }
 
-        // Trailing edge of a word
-        if let wordSel = page.selectionForWord(at: pagePoint) {
-            let bounds = wordSel.bounds(for: page)
-            if pagePoint.x >= bounds.maxX - 10 {
-                return true
-            }
-        }
+        // Only run micro-OCR on embedded-text pages when clicking right on the trailing upper edge of a word
+        // that carries OCR-garbled superscript artifacts (like `.'`, `."`, `*`, `†`, `‡`, `°`)
+        guard let wordSel = page.selectionForWord(at: pagePoint) else { return false }
+        let wb = wordSel.bounds(for: page)
+        guard !wb.isEmpty, wb.insetBy(dx: -4.0, dy: -4.0).contains(pagePoint) else { return false }
+        guard pagePoint.x >= wb.maxX - 6.0 && pagePoint.y >= wb.midY - 2.0 else { return false }
 
-        return false
+        let ocrSuperscriptArtifacts = CharacterSet(charactersIn: "'’\"”*†‡^°`")
+        return nearText.unicodeScalars.contains(where: { ocrSuperscriptArtifacts.contains($0) })
     }
 
     private func matchFootnoteStart(in line: String) -> (marker: String, body: String)? {

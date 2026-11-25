@@ -117,6 +117,7 @@ public final class BackupService: @unchecked Sendable {
     }
 
     private func runDitto(arguments: [String]) throws {
+        #if os(macOS)
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
         process.arguments = arguments
@@ -129,5 +130,8 @@ public final class BackupService: @unchecked Sendable {
             let errStr = String(data: errData, encoding: .utf8) ?? "Exit \(process.terminationStatus)"
             throw BackupServiceError.zipFailed(errStr)
         }
+        #else
+        throw BackupServiceError.zipFailed(".graphebackup sıkıştırması macOS gerektirir; iOS'ta iCloud Drive eşitlemesi kullanılır.")
+        #endif
     }
 }

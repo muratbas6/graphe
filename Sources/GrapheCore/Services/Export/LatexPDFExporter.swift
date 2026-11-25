@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import Foundation
 
@@ -775,3 +776,4 @@ public struct LatexPDFExporter: Sendable {
         return String(text[..<idx]) + "…"
     }
 }
+#endif

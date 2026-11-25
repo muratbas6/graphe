@@ -1,4 +1,8 @@
+#if canImport(AppKit)
 import AppKit
+#elseif canImport(UIKit)
+import UIKit
+#endif
 import Foundation
 import SwiftUI
 
@@ -55,6 +59,7 @@ public enum HighlightColor: String, CaseIterable, Codable, Identifiable, Sendabl
         }
     }
 
+    #if canImport(AppKit)
     public var pdfNSColor: NSColor {
         switch self {
         case .yellow: return NSColor(calibratedRed: 0.98, green: 0.86, blue: 0.24, alpha: 0.36)
@@ -64,6 +69,17 @@ public enum HighlightColor: String, CaseIterable, Codable, Identifiable, Sendabl
         case .purple: return NSColor(calibratedRed: 0.70, green: 0.48, blue: 0.94, alpha: 0.30)
         }
     }
+    #elseif canImport(UIKit)
+    public var pdfUIColor: UIColor {
+        switch self {
+        case .yellow: return UIColor(red: 0.98, green: 0.86, blue: 0.24, alpha: 0.36)
+        case .blue: return UIColor(red: 0.32, green: 0.66, blue: 0.98, alpha: 0.30)
+        case .pink: return UIColor(red: 0.96, green: 0.44, blue: 0.60, alpha: 0.30)
+        case .green: return UIColor(red: 0.36, green: 0.82, blue: 0.50, alpha: 0.30)
+        case .purple: return UIColor(red: 0.70, green: 0.48, blue: 0.94, alpha: 0.30)
+        }
+    }
+    #endif
 }
 
 public struct HighlightRect: Codable, Hashable, Sendable {
@@ -96,7 +112,7 @@ public enum AnnotationKind: String, Codable, Hashable, Sendable {
     case pageNote
 }
 
-public struct AnnotationItem: Identifiable, Hashable, Sendable {
+public struct AnnotationItem: Identifiable, Codable, Hashable, Sendable {
     public let id: UUID
     public let documentHash: String
     public let pageIndex: Int
@@ -148,7 +164,7 @@ public struct SelectionCapture: Equatable, Sendable {
     }
 }
 
-public struct LibraryDocumentRecord: Identifiable, Hashable, Sendable {
+public struct LibraryDocumentRecord: Identifiable, Codable, Hashable, Sendable {
     public let hash: String
     public var path: String
     public var title: String
@@ -247,7 +263,7 @@ public struct GlobalSearchResult: Identifiable, Hashable, Sendable {
     }
 }
 
-public struct BookmarkItem: Identifiable, Hashable, Sendable {
+public struct BookmarkItem: Identifiable, Codable, Hashable, Sendable {
     public let id: UUID
     public let documentHash: String
     public let pageIndex: Int

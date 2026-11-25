@@ -1,5 +1,7 @@
 #if canImport(AppKit)
 import AppKit
+#elseif canImport(UIKit)
+import UIKit
 #endif
 import Foundation
 
@@ -41,6 +43,14 @@ public final class UserDefaultsPositionStore: ReadingPositionStoring, @unchecked
         #if canImport(AppKit)
         self.terminateObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.willTerminateNotification,
+            object: nil,
+            queue: nil
+        ) { [weak self] _ in
+            self?.flush()
+        }
+        #elseif canImport(UIKit)
+        self.terminateObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.willResignActiveNotification,
             object: nil,
             queue: nil
         ) { [weak self] _ in

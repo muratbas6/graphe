@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
@@ -458,16 +459,16 @@ public struct LibrarySidebarView: View {
                     if state.libraryViewMode == .folders {
                         if !state.watchedFolders.isEmpty {
                             Button {
-                                state.refreshFolderTrees()
+                                state.syncWatchedFoldersWithCloud(showToast: true)
                             } label: {
-                                Image(systemName: "arrow.clockwise")
+                                Image(systemName: "arrow.triangle.2.circlepath.icloud")
                                     .font(.caption2)
                                     .foregroundStyle(state.theme.secondaryInk)
                                     .frame(width: 20, height: 20)
                                     .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
-                            .help("Klasörleri Yenile")
+                            .help("iPhone / iCloud ile Şimdi Eşitle")
                         }
 
                         Menu {
@@ -1336,3 +1337,4 @@ private struct SidebarSelectableRow<Content: View>: View {
         }
     }
 }
+#endif

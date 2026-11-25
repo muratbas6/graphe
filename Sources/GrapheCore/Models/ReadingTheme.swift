@@ -1,4 +1,8 @@
+#if canImport(AppKit)
 import AppKit
+#elseif canImport(UIKit)
+import UIKit
+#endif
 import SwiftUI
 
 public enum ReadingTheme: String, CaseIterable, Identifiable, Codable, Sendable {
@@ -32,6 +36,7 @@ public enum ReadingTheme: String, CaseIterable, Identifiable, Codable, Sendable 
         }
     }
 
+    #if canImport(AppKit)
     public var canvasBackgroundColor: NSColor {
         switch self {
         case .original:
@@ -47,17 +52,31 @@ public enum ReadingTheme: String, CaseIterable, Identifiable, Codable, Sendable 
             return NSColor(calibratedRed: 0.098, green: 0.102, blue: 0.122, alpha: 1.0)
         }
     }
+    #elseif canImport(UIKit)
+    public var canvasBackgroundColor: UIColor {
+        switch self {
+        case .original:
+            return UIColor { traits in
+                traits.userInterfaceStyle == .dark
+                    ? UIColor(red: 0.11, green: 0.115, blue: 0.13, alpha: 1.0)
+                    : UIColor(red: 0.965, green: 0.965, blue: 0.969, alpha: 1.0)
+            }
+        case .sepia:
+            return UIColor(red: 0.937, green: 0.906, blue: 0.839, alpha: 1.0)
+        case .softDark:
+            return UIColor(red: 0.098, green: 0.102, blue: 0.122, alpha: 1.0)
+        }
+    }
+    #endif
 
     /// Main workspace / window backdrop (Konsept A: #F6F6F7 / #EFE7D6 / #191A1F)
     public var windowBackground: Color {
         switch self {
         case .original:
-            return Color(nsColor: NSColor(name: nil) { appearance in
-                let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-                return isDark
-                    ? NSColor(calibratedRed: 0.11, green: 0.115, blue: 0.13, alpha: 1.0)
-                    : NSColor(calibratedRed: 0.965, green: 0.965, blue: 0.969, alpha: 1.0)
-            })
+            return PlatformAppearanceHelper.adaptiveColor(
+                light: (0.965, 0.965, 0.969, 1.0),
+                dark: (0.11, 0.115, 0.13, 1.0)
+            )
         case .sepia:
             return Color(red: 0.937, green: 0.906, blue: 0.839)
         case .softDark:
@@ -69,12 +88,10 @@ public enum ReadingTheme: String, CaseIterable, Identifiable, Codable, Sendable 
     public var chromeBackground: Color {
         switch self {
         case .original:
-            return Color(nsColor: NSColor(name: nil) { appearance in
-                let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-                return isDark
-                    ? NSColor(calibratedRed: 0.09, green: 0.095, blue: 0.11, alpha: 1.0)
-                    : NSColor(calibratedRed: 0.937, green: 0.937, blue: 0.945, alpha: 1.0)
-            })
+            return PlatformAppearanceHelper.adaptiveColor(
+                light: (0.937, 0.937, 0.945, 1.0),
+                dark: (0.09, 0.095, 0.11, 1.0)
+            )
         case .sepia:
             return Color(red: 0.906, green: 0.871, blue: 0.788)
         case .softDark:
@@ -86,12 +103,10 @@ public enum ReadingTheme: String, CaseIterable, Identifiable, Codable, Sendable 
     public var cardBackground: Color {
         switch self {
         case .original:
-            return Color(nsColor: NSColor(name: nil) { appearance in
-                let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-                return isDark
-                    ? NSColor(calibratedRed: 0.145, green: 0.153, blue: 0.18, alpha: 1.0)
-                    : NSColor(calibratedRed: 1.0, green: 1.0, blue: 1.0, alpha: 1.0)
-            })
+            return PlatformAppearanceHelper.adaptiveColor(
+                light: (1.0, 1.0, 1.0, 1.0),
+                dark: (0.145, 0.153, 0.18, 1.0)
+            )
         case .sepia:
             return Color(red: 0.969, green: 0.945, blue: 0.890)
         case .softDark:
@@ -103,12 +118,10 @@ public enum ReadingTheme: String, CaseIterable, Identifiable, Codable, Sendable 
     public var surfaceBackground: Color {
         switch self {
         case .original:
-            return Color(nsColor: NSColor(name: nil) { appearance in
-                let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-                return isDark
-                    ? NSColor(calibratedRed: 0.125, green: 0.132, blue: 0.155, alpha: 1.0)
-                    : NSColor(calibratedRed: 0.988, green: 0.988, blue: 0.992, alpha: 1.0)
-            })
+            return PlatformAppearanceHelper.adaptiveColor(
+                light: (0.988, 0.988, 0.992, 1.0),
+                dark: (0.125, 0.132, 0.155, 1.0)
+            )
         case .sepia:
             return Color(red: 0.961, green: 0.933, blue: 0.859)
         case .softDark:
@@ -119,12 +132,10 @@ public enum ReadingTheme: String, CaseIterable, Identifiable, Codable, Sendable 
     public var subtleBorder: Color {
         switch self {
         case .original:
-            return Color(nsColor: NSColor(name: nil) { appearance in
-                let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-                return isDark
-                    ? NSColor.white.withAlphaComponent(0.09)
-                    : NSColor(calibratedRed: 0.059, green: 0.090, blue: 0.165, alpha: 0.09)
-            })
+            return PlatformAppearanceHelper.adaptiveColor(
+                light: (0.059, 0.090, 0.165, 0.09),
+                dark: (1.0, 1.0, 1.0, 0.09)
+            )
         case .sepia:
             return Color(red: 0.290, green: 0.224, blue: 0.141).opacity(0.13)
         case .softDark:
@@ -135,12 +146,10 @@ public enum ReadingTheme: String, CaseIterable, Identifiable, Codable, Sendable 
     public var primaryInk: Color {
         switch self {
         case .original:
-            return Color(nsColor: NSColor(name: nil) { appearance in
-                let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-                return isDark
-                    ? NSColor(calibratedRed: 0.918, green: 0.925, blue: 0.937, alpha: 1.0)
-                    : NSColor(calibratedRed: 0.094, green: 0.094, blue: 0.106, alpha: 1.0)
-            })
+            return PlatformAppearanceHelper.adaptiveColor(
+                light: (0.094, 0.094, 0.106, 1.0),
+                dark: (0.918, 0.925, 0.937, 1.0)
+            )
         case .sepia:
             return Color(red: 0.180, green: 0.145, blue: 0.102)
         case .softDark:
@@ -151,12 +160,10 @@ public enum ReadingTheme: String, CaseIterable, Identifiable, Codable, Sendable 
     public var secondaryInk: Color {
         switch self {
         case .original:
-            return Color(nsColor: NSColor(name: nil) { appearance in
-                let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-                return isDark
-                    ? NSColor(calibratedRed: 0.557, green: 0.584, blue: 0.647, alpha: 1.0)
-                    : NSColor(calibratedRed: 0.392, green: 0.455, blue: 0.545, alpha: 1.0)
-            })
+            return PlatformAppearanceHelper.adaptiveColor(
+                light: (0.392, 0.455, 0.545, 1.0),
+                dark: (0.557, 0.584, blue: 0.647, 1.0)
+            )
         case .sepia:
             return Color(red: 0.471, green: 0.404, blue: 0.322)
         case .softDark:
@@ -168,12 +175,10 @@ public enum ReadingTheme: String, CaseIterable, Identifiable, Codable, Sendable 
     public var accentColor: Color {
         switch self {
         case .original:
-            return Color(nsColor: NSColor(name: nil) { appearance in
-                let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-                return isDark
-                    ? NSColor(calibratedRed: 0.376, green: 0.647, blue: 0.980, alpha: 1.0)
-                    : NSColor(calibratedRed: 0.145, green: 0.388, blue: 0.922, alpha: 1.0)
-            })
+            return PlatformAppearanceHelper.adaptiveColor(
+                light: (0.145, 0.388, 0.922, 1.0),
+                dark: (0.376, 0.647, 0.980, 1.0)
+            )
         case .sepia:
             return Color(red: 0.631, green: 0.384, blue: 0.027)
         case .softDark:
@@ -217,12 +222,10 @@ public enum ReadingTheme: String, CaseIterable, Identifiable, Codable, Sendable 
     public var cardShadowColor: Color {
         switch self {
         case .original:
-            return Color(nsColor: NSColor(name: nil) { appearance in
-                let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-                return isDark
-                    ? NSColor.black.withAlphaComponent(0.32)
-                    : NSColor(calibratedRed: 0.059, green: 0.090, blue: 0.165, alpha: 0.06)
-            })
+            return PlatformAppearanceHelper.adaptiveColor(
+                light: (0.059, 0.090, 0.165, 0.06),
+                dark: (0.0, 0.0, 0.0, 0.32)
+            )
         case .sepia:
             return Color(red: 0.267, green: 0.192, blue: 0.094).opacity(0.08)
         case .softDark:

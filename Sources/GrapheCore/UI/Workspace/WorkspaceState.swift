@@ -1,3 +1,4 @@
+#if os(macOS)
 import Foundation
 import Observation
 import PDFKit
@@ -124,6 +125,8 @@ public final class WorkspaceState {
     private let vocabularyStore: VocabularyStoring
     public private(set) var libraryDatabase: LibraryDatabase
     public let folderExplorer: FolderExplorerService
+    public let cloudSyncService = CloudSyncService()
+    private var autoCloudSyncTask: Task<Void, Never>?
     public let footnoteResolver = FootnoteResolver()
     public let ocrService = VisionOCRService()
     public let autoCropService = AutoCropService()
@@ -207,6 +210,9 @@ public final class WorkspaceState {
             restoreSavedSession()
         }
         refreshCurrentPageFootnotes()
+        if !ProcessInfo.processInfo.processName.contains("GrapheSelfTest") && !self.watchedFolders.isEmpty {
+            syncWatchedFoldersWithCloud(showToast: false)
+        }
     }
 
     public var activeTab: TabSession? {
@@ -2339,6 +2345,7 @@ public final class WorkspaceState {
             ? Dictionary(uniqueKeysWithValues: activePageContainers.map { ($0.id, $0) })
             : [:]
         libraryDatabase.upsertNoteContainer(copy, pageTitle: title)
+        scheduleAutoCloudSync()
         if let idx = activePageContainers.firstIndex(where: { $0.id == copy.id }) {
             activePageContainers[idx] = copy
         }
@@ -2762,6 +2769,18 @@ public final class WorkspaceState {
 
     private func reloadAnnotations(forDocumentHash hash: String) {
         annotationsByDocument[hash] = libraryDatabase.fetchAnnotations(forDocumentHash: hash)
+        scheduleAutoCloudSync()
+    }
+
+    public func scheduleAutoCloudSync() {
+        guard !ProcessInfo.processInfo.processName.contains("GrapheSelfTest"),
+              !watchedFolders.isEmpty else { return }
+        autoCloudSyncTask?.cancel()
+        autoCloudSyncTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(2.0))
+            guard !Task.isCancelled else { return }
+            self?.syncWatchedFoldersWithCloud(showToast: false)
+        }
     }
 
     private func scheduleBackgroundDocumentPrep(document: PDFDocument, hash: String, url: URL) {
@@ -2937,6 +2956,38 @@ public final class WorkspaceState {
     public func flushPendingPersistence() {
         persistSession()
         store.flush()
+        for root in watchedFolders {
+            _ = try? cloudSyncService.synchronize(folder: root.url, database: libraryDatabase)
+        }
+    }
+
+    public func syncWatchedFoldersWithCloud(showToast: Bool = true) {
+        let folders = watchedFolders
+        guard !folders.isEmpty else { return }
+        let db = libraryDatabase
+        let sync = cloudSyncService
+        Task.detached(priority: .utility) { [weak self] in
+            var syncedAny = false
+            for root in folders {
+                if (try? sync.synchronize(folder: root.url, database: db)) != nil {
+                    syncedAny = true
+                }
+            }
+            guard syncedAny else { return }
+            await MainActor.run { [weak self] in
+                guard let self else { return }
+                self.refreshLibrary()
+                self.refreshStandaloneNotebooks()
+                self.refreshFolderTrees()
+                if showToast {
+                    NotificationCenter.default.post(
+                        name: .grapheShowToast,
+                        object: nil,
+                        userInfo: ["message": "Klasör & iCloud verileri eşitlendi."]
+                    )
+                }
+            }
+        }
     }
 
     private func persistSession() {
@@ -3229,3 +3280,4 @@ public final class WorkspaceState {
         return true
     }
 }
+#endif

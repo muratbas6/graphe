@@ -73,7 +73,7 @@ public struct MultiDictionaryLookupResult: Equatable {
 @MainActor
 public final class DictionaryManager {
     public var installedDictionaries: [InstalledStarDictConfig] = []
-    public var includeSystemDictionary: Bool = true
+    public var includeSystemDictionary: Bool = false
     public var lastError: String?
 
     private var loadedCache: [String: StarDictDictionary] = [:]
@@ -365,24 +365,10 @@ public final class DictionaryManager {
             appendUnique(fullQuery.trimmingCharacters(in: .punctuationCharacters))
         }
         appendUnique(primaryWord)
-
-        // Add NLTagger lemma for inflected forms (e.g. "constitutes" -> "constitute")
-        let tagger = NLTagger(tagSchemes: [.lemma])
-        tagger.string = primaryWord
-        tagger.enumerateTags(
-            in: primaryWord.startIndex..<primaryWord.endIndex,
-            unit: .word,
-            scheme: .lemma,
-            options: [.omitWhitespace, .omitPunctuation]
-        ) { tag, _ in
-            if let lemma = tag?.rawValue, !lemma.isEmpty {
-                appendUnique(lemma)
-                return false
-            }
-            return true
-        }
-
         appendUnique(primaryWord.lowercased())
+        for stem in SystemOfflineDictionaryService.lightweightEnglishStems(for: primaryWord) {
+            appendUnique(stem)
+        }
         return list
     }
 

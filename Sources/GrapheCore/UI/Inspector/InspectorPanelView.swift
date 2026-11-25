@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import SwiftUI
 @preconcurrency import Translation
@@ -822,3 +823,4 @@ private struct FlowLayoutChips: View {
         }
     }
 }
+#endif

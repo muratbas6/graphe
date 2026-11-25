@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import PDFKit
 import SwiftUI
@@ -473,49 +474,6 @@ public final class GraphePDFView: PDFView {
             }
         }
 
-        let activeMods = event.modifierFlags.intersection([.command, .option, .control, .shift])
-        if event.clickCount == 1 && activeMods.isEmpty {
-            let viewPoint = convert(event.locationInWindow, from: nil)
-            if let page = page(for: viewPoint, nearest: false),
-               let doc = document {
-                let pagePoint = convert(viewPoint, to: page)
-
-                let directLink = page.annotation(at: pagePoint)
-                let fuzzyLink = page.annotations.first { ann in
-                    ann.bounds.insetBy(dx: -3, dy: -3).contains(pagePoint) &&
-                    (ann.destination != nil || ann.action is PDFActionGoTo)
-                }
-
-                let docHashOpt = documentHash.isEmpty ? nil : documentHash
-                if let linkAnnotation = directLink ?? fuzzyLink,
-                   (linkAnnotation.destination != nil || linkAnnotation.action is PDFActionGoTo),
-                   let preview = footnoteResolver.resolveLinkAnnotation(
-                       linkAnnotation,
-                       on: page,
-                       in: doc,
-                       documentTitle: documentTitle,
-                       documentHash: docHashOpt
-                   ) {
-                    onShowFootnotePopover?(preview, viewPoint)
-                    return
-                }
-
-                let pageIndex = doc.index(for: page)
-                let ocrPage = pageIndex != NSNotFound ? ocrPageProvider?(pageIndex) : nil
-                if let preview = footnoteResolver.resolveMarkerClick(
-                    at: pagePoint,
-                    on: page,
-                    in: doc,
-                    documentTitle: documentTitle,
-                    documentHash: docHashOpt,
-                    ocrPage: ocrPage
-                ) {
-                    onShowFootnotePopover?(preview, viewPoint)
-                    return
-                }
-            }
-        }
-
         super.mouseDown(with: event)
     }
 
@@ -546,7 +504,6 @@ public final class GraphePDFView: PDFView {
         }
         super.mouseUp(with: event)
 
-        // Two-way PDF -> OneNote link: single click on an existing highlight (without dragging a selection)
         let activeMods = event.modifierFlags.intersection([.command, .option, .control, .shift])
         if !isSnapshotMode,
            event.clickCount == 1,
@@ -555,14 +512,50 @@ public final class GraphePDFView: PDFView {
            let downPt = lastMouseDownPoint {
             let upPt = convert(event.locationInWindow, from: nil)
             let dist = hypot(upPt.x - downPt.x, upPt.y - downPt.y)
-            if dist <= 4.0,
+            if dist <= 3.5,
                let page = page(for: upPt, nearest: false),
                let doc = document {
+                let pagePt = convert(upPt, to: page)
+                let docHashOpt = documentHash.isEmpty ? nil : documentHash
+
+                // 1) Genuine stationary click on internal PDF footnote link or inline marker
+                let directLink = page.annotation(at: pagePt)
+                let fuzzyLink = page.annotations.first { ann in
+                    ann.bounds.insetBy(dx: -1.5, dy: -1.5).contains(pagePt) &&
+                    ann.bounds.width < page.bounds(for: .mediaBox).width * 0.35 &&
+                    (ann.destination != nil || ann.action is PDFActionGoTo)
+                }
+                if let linkAnnotation = directLink ?? fuzzyLink,
+                   (linkAnnotation.destination != nil || linkAnnotation.action is PDFActionGoTo),
+                   let preview = footnoteResolver.resolveLinkAnnotation(
+                       linkAnnotation,
+                       on: page,
+                       in: doc,
+                       documentTitle: documentTitle,
+                       documentHash: docHashOpt
+                   ) {
+                    onShowFootnotePopover?(preview, upPt)
+                    return
+                }
+
                 let pageIndex = doc.index(for: page)
+                let ocrPage = pageIndex != NSNotFound ? ocrPageProvider?(pageIndex) : nil
+                if let preview = footnoteResolver.resolveMarkerClick(
+                    at: pagePt,
+                    on: page,
+                    in: doc,
+                    documentTitle: documentTitle,
+                    documentHash: docHashOpt,
+                    ocrPage: ocrPage
+                ) {
+                    onShowFootnotePopover?(preview, upPt)
+                    return
+                }
+
+                // 2) Two-way PDF -> OneNote link: single click on an existing highlight
                 if pageIndex != NSNotFound,
                    let pageAnnotations = pageAnnotationsProvider?(pageIndex),
                    !pageAnnotations.isEmpty {
-                    let pagePt = convert(upPt, to: page)
                     if let hit = pageAnnotations.first(where: { item in
                         item.kind == .highlight && item.rects.contains(where: { $0.cgRect.insetBy(dx: -2, dy: -2).contains(pagePt) })
                     }) {
@@ -1354,3 +1347,4 @@ public struct PDFKitRepresentable: NSViewRepresentable {
         }
     }
 }
+#endif

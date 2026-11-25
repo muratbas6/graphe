@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import Foundation
 import Observation
@@ -471,3 +472,4 @@ public final class SpotifyController {
         }
     }
 }
+#endif
