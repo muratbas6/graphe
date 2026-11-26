@@ -111,16 +111,17 @@ public struct InspectorPanelView: View {
                 }
             }
         }
-        .onAppear {
-            if !state.selectedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && state.translatedText.isEmpty {
-                triggerTranslation(for: state.selectedText)
-            }
-        }
-        .onChange(of: state.selectedText) { _, newValue in
-            triggerTranslation(for: newValue)
+        .onChange(of: state.selectedText) { _, _ in
+            // Never auto-invoke Apple TranslationSession on PDF text selection — macOS shows
+            // system "Download Language/Dictionary" dialogs for uninstalled pairs. Users trigger
+            // translation explicitly via the "Çevir" button when desired.
+            state.translatedText = ""
+            state.translationError = nil
+            state.isTranslating = false
         }
         .onChange(of: state.targetLanguage) { _, _ in
-            triggerTranslation(for: state.selectedText)
+            state.translatedText = ""
+            state.translationError = nil
         }
     }
 
@@ -345,7 +346,20 @@ public struct InspectorPanelView: View {
                 }
                 .labelsHidden()
                 .controlSize(.mini)
-                .frame(width: 96)
+                .frame(width: 92)
+
+                Button {
+                    triggerTranslation(for: state.selectedText)
+                } label: {
+                    Text("Çevir")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(state.theme.accentColor)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(state.theme.accentSoftBackground, in: Capsule())
+                }
+                .buttonStyle(.plain)
+                .disabled(state.selectedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || state.isTranslating)
             }
 
             if state.isTranslating {
